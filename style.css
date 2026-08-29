@@ -279,3 +279,22 @@ a {
         flex-direction: column;
     }
 }
+
+table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    margin: 2rem 0 !important;
+    border: 1px solid #94a3b8 !important; /* Darker grey border line */
+}
+
+th, td {
+    padding: 12px 16px !important;
+    border: 1px solid #cbd5e1 !important; /* Forces visible grid lines between cells */
+    text-align: left !important;
+}
+
+thead th {
+    background-color: #f1f5f9 !important;
+    color: #0f172a !important;
+    font-weight: 600 !important;
+}
