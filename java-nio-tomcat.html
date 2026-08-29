@@ -21,70 +21,89 @@
             <li><a href="#">About</a></li>
         </ul>
     </nav>
+     <!-- Article Header -->
+    <header class="article-header">
+        <div class="article-header-content">
+            <span class="tag">Backend Architecture</span>
+            <h1>Deep Dive: Java NIO and Apache Tomcat Internal Request Architecture</h1>
+            <div class="author-meta">
+                <span class="author">Technical Insights Team</span>
+                <span class="date">Oct 24, 2026</span>
+            </div>
+        </div>
+    </header>
 
-<h1>Deep Dive: Java NIO and Apache Tomcat Internal Request Architecture</h1>
-<h2>Introduction</h2>
-<p>In high-performance Java enterprise applications, I/O efficiency is the defining bottleneck for scalability. Traditionally, Java's networking relied on synchronous, blocking APIs that forced a "one thread per client connection" model. This approach quickly ran into structural limitations under massive traffic loads. </p>
-<p>This comprehensive technical guide explores how <strong>Java NIO (New I/O)</strong> solves these bottlenecks using non-blocking, multiplexed mechanics, and how <strong>Apache Tomcat</strong> utilizes this foundation internally to manage thousands of concurrent connections. Finally, we will examine how modern developments like <strong>Spring WebFlux (Reactive Stack)</strong> and <strong>JDK 21+ Virtual Threads (Project Loom)</strong> evolve these scaling paradigms.</p>
-<hr>
-<h2>Agenda</h2>
-<ol>
-  <li><strong>Foundations of Java Non-Blocking I/O (NIO)</strong>
-    <ul>
-      <li>Traditional Blocking I/O vs. Java NIO</li>
-      <li>The Three Pillars of Java NIO</li>
-      <li>The Java NIO Selector Lifecycle &amp; Interest Operations</li>
-      <li>Selection Keys and the Event Loop</li>
-      <li>Trade-offs &amp; Modern Alternatives</li>
-    </ul>
-  </li>
-  <li><strong>Tomcat's Internal Network Architecture</strong>
-    <ul>
-      <li>The Coyote Connector Layer</li>
-      <li>The Core Triad: Acceptor, Poller, and Worker Pool</li>
-    </ul>
-  </li>
-  <li><strong>The Lifecycle of an HTTP Request in Tomcat</strong>
-    <ul>
-      <li>Step-by-Step Execution Journey</li>
-      <li>Crucial Performance Tuning: <code>maxConnections</code> vs. <code>maxThreads</code></li>
-    </ul>
-  </li>
-  <li><strong>Under the Hood: Native OS Kernel Integration</strong>
-    <ul>
-      <li>Symmetrical Sockets: Inbound (RMEM) &amp; Outbound (WMEM) Buffers</li>
-      <li>The Silent Actor: Background OS Ingestion</li>
-      <li>The Poller Wakeup Mechanism (<code>epoll</code>, <code>kqueue</code>, <code>IOCP</code>)</li>
-    </ul>
-  </li>
-  <li><strong>Decoupling Acceptor and Poller: The Poller Event Queue</strong>
-    <ul>
-      <li>Solving the Selector Blocking Dilemma</li>
-      <li>The Concurrency Blueprint: Queue Hand-off &amp; <code>selector.wakeup()</code></li>
-    </ul>
-  </li>
-  <li><strong>Concurrency Over a Single TCP Connection</strong>
-    <ul>
-      <li>HTTP/1.1 Sequential Model &amp; Head-of-Line (HoL) Blocking</li>
-      <li>HTTP/2 Multiplexed Model &amp; Stream De-multiplexing</li>
-      <li>Socket Locking and Thread-Safety Guardrails</li>
-    </ul>
-  </li>
-  <li><strong>Scaling the Execution Layer: MVC, WebFlux, and Virtual Threads</strong>
-    <ul>
-      <li>The Limitation of Tomcat's Blocking Servlets</li>
-      <li>Netty and Spring WebFlux (Reactive Multiplexing)</li>
-      <li>JDK 21+ Virtual Threads (Project Loom)</li>
-      <li>The Synchronization Gotcha: Thread Pinning</li>
-    </ul>
-  </li>
-  <li><strong>Summary Matrix &amp; Architectural Comparison</strong></li>
-</ol>
-<hr>
-<h2>1. Foundations of Java Non-Blocking I/O (NIO)</h2>
-<h3>Traditional Blocking I/O vs. Java NIO</h3>
-<p>Traditional Java I/O (<code>java.io</code>) is <strong>stream-oriented and blocking</strong>. It reads or writes data one byte or character at a time. If a socket has no incoming data, the reading thread blocks, freezing its execution until data arrives. This forces architectures into a rigid <strong>"one thread per client connection"</strong> model. Under heavy load, this model consumes significant system memory and induces high Operating System (OS) context-switching overhead as the CPU jumps between thousands of blocked and active threads.</p>
-<p><strong>Java NIO (New I/O)</strong>, introduced in JDK 1.4, is <strong>buffer-oriented and non-blocking</strong>. Instead of single bytes, NIO tracks blocks of data. When an execution thread requests data from a source, it receives whatever is currently available right away without waiting. If no data is present, the thread is not blocked; it is immediately released to perform other tasks. This allows a single thread to manage thousands of active network connections simultaneously.</p>
+ <!-- Main Content Container -->
+    <main class="article-container">
+        
+        <section class="article-section">
+            <h2>Introduction</h2>
+            <p>In high-performance Java enterprise applications, I/O efficiency is the defining bottleneck for scalability. Traditionally, Java's networking relied on synchronous, blocking APIs that forced a "one thread per client connection" model. This approach quickly ran into structural limitations under massive traffic loads.</p>
+            <p>This comprehensive technical guide explores how <strong>Java NIO (New I/O)</strong> solves these bottlenecks using non-blocking, multiplexed mechanics, and how <strong>Apache Tomcat</strong> utilizes this foundation internally to manage thousands of concurrent connections. Finally, we will examine how modern developments like <strong>Spring WebFlux (Reactive Stack)</strong> and <strong>JDK 21+ Virtual Threads (Project Loom)</strong> evolve these scaling paradigms.</p>
+        </section>
+         <hr class="divider">
+        <section class="article-section agenda-box">
+            <h2>Agenda</h2>
+            <ol>
+              <li><strong>Foundations of Java Non-Blocking I/O (NIO)</strong>
+                <ul>
+                  <li>Traditional Blocking I/O vs. Java NIO</li>
+                  <li>The Three Pillars of Java NIO</li>
+                  <li>The Java NIO Selector Lifecycle &amp; Interest Operations</li>
+                  <li>Selection Keys and the Event Loop</li>
+                  <li>Trade-offs &amp; Modern Alternatives</li>
+                </ul>
+              </li>
+              <li><strong>Tomcat's Internal Network Architecture</strong>
+                <ul>
+                  <li>The Coyote Connector Layer</li>
+                  <li>The Core Triad: Acceptor, Poller, and Worker Pool</li>
+                </ul>
+              </li>
+              <li><strong>The Lifecycle of an HTTP Request in Tomcat</strong>
+                <ul>
+                  <li>Step-by-Step Execution Journey</li>
+                  <li>Crucial Performance Tuning: <code>maxConnections</code> vs. <code>maxThreads</code></li>
+                </ul>
+              </li>
+              <li><strong>Under the Hood: Native OS Kernel Integration</strong>
+                <ul>
+                  <li>Symmetrical Sockets: Inbound (RMEM) &amp; Outbound (WMEM) Buffers</li>
+                  <li>The Silent Actor: Background OS Ingestion</li>
+                  <li>The Poller Wakeup Mechanism (<code>epoll</code>, <code>kqueue</code>, <code>IOCP</code>)</li>
+                </ul>
+              </li>
+              <li><strong>Decoupling Acceptor and Poller: The Poller Event Queue</strong>
+                <ul>
+                  <li>Solving the Selector Blocking Dilemma</li>
+                  <li>The Concurrency Blueprint: Queue Hand-off &amp; <code>selector.wakeup()</code></li>
+                </ul>
+              </li>
+              <li><strong>Concurrency Over a Single TCP Connection</strong>
+                <ul>
+                  <li>HTTP/1.1 Sequential Model &amp; Head-of-Line (HoL) Blocking</li>
+                  <li>HTTP/2 Multiplexed Model &amp; Stream De-multiplexing</li>
+                  <li>Socket Locking and Thread-Safety Guardrails</li>
+                </ul>
+              </li>
+              <li><strong>Scaling the Execution Layer: MVC, WebFlux, and Virtual Threads</strong>
+                <ul>
+                  <li>The Limitation of Tomcat's Blocking Servlets</li>
+                  <li>Netty and Spring WebFlux (Reactive Multiplexing)</li>
+                  <li>JDK 21+ Virtual Threads (Project Loom)</li>
+                  <li>The Synchronization Gotcha: Thread Pinning</li>
+                </ul>
+              </li>
+              <li><strong>Summary Matrix &amp; Architectural Comparison</strong></li>
+            </ol>
+        </section>
+        <hr class="divider">
+         <section class="article-section">
+            <h2>1. Foundations of Java Non-Blocking I/O (NIO)</h2>
+            
+            <h3>Traditional Blocking I/O vs. Java NIO</h3>
+            <p>Traditional Java I/O (<code>java.io</code>) is <strong>stream-oriented and blocking</strong>. It reads or writes data one byte or character at a time. If a socket has no incoming data, the reading thread blocks, freezing its execution until data arrives. This forces architectures into a rigid <strong>"one thread per client connection"</strong> model. Under heavy load, this model consumes significant system memory and induces high Operating System (OS) context-switching overhead as the CPU jumps between thousands of blocked and active threads.</p>
+            <p><strong>Java NIO (New I/O)</strong>, introduced in JDK 1.4, is <strong>buffer-oriented and non-blocking</strong>. Instead of single bytes, NIO tracks blocks of data. When an execution thread requests data from a source, it receives whatever is currently available right away without waiting. If no data is present, the thread is not blocked; it is immediately released to perform other tasks. This allows a single thread to manage thousands of active network connections simultaneously.</p>
 <h3>The Three Pillars of Java NIO</h3>
 <p>NIO's foundational architecture depends on three core components [2]:</p>
 <ol>
@@ -94,7 +113,7 @@
 </ol>
 <h3>The Java NIO Selector Lifecycle &amp; Interest Operations</h3>
 <p>The Selector acts like an air traffic controller [3]. Instead of spawning thousands of threads to wait on individual client connections, all connections are registered with a single Selector object, letting a single thread query the Selector for events [3].</p>
-<pre><code>+-----+------------+                 +-----+------------+
+<pre class="diagram-block"><code>+-----+------------+                 +-----+------------+
 |  SocketChannel   |                 |  SocketChannel   |
 | (Client Conn 1)  |                 | (Client Conn 2)  |
 +---------┬--------+                 +---------┬--------+
@@ -386,4 +405,4 @@ return new Dashboard(user, order);</code></pre>
     </tr>
   </tbody>
 </table>
-</body>
+         </section></body>
