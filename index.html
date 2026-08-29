@@ -18,7 +18,7 @@
         <div class="logo">MoSob Articles<span>.</span></div>
         <ul class="nav-links">
             <li><a href="#" class="active">Home</a></li>
-            <li><a href="#">Articles</a></li>
+            <li><a href="/index.html#latest-stories">Articles</a></li>
             <li><a href="#">About</a></li>
         </ul>
     </nav>
@@ -33,12 +33,12 @@
                 <span class="author">By Muhammad Sobhy</span>
                 <span class="date">Aug 29, 2026</span>
             </div>
-            <a href="/java-nio-tomcat-guide.md" class="read-more-btn">Read Article &rarr;</a>
+            <a href="/java-nio-tomcat.html" class="read-more-btn">Read Article &rarr;</a>
         </div>
     </header>
 
     <!-- Main Content Section -->
-    <main class="container">
+    <main class="container" id="latest-stories">
         <h2 class="section-title">Latest Stories</h2>
         
         <!-- Articles Grid -->
@@ -47,52 +47,22 @@
             <article class="card">
                 <div class="card-img" style="background-color: #e2e8f0;"></div>
                 <div class="card-body">
-                    <span class="card-tag">Technology</span>
-                    <h3><a href="#">Designing for the Human Experience in AI Systems</a></h3>
-                    <p>How user experience frameworks are adapting to generative interfaces and prompt-based systems.</p>
+                    <span class="card-tag">Java</span>
+                    <h3><a href="/java-nio-tomcat.html">Deep Dive: Java NIO and Apache Tomcat Internal Request Architecture</a></h3>
+            <p>This technical guide explains how Java NIO’s non-blocking, selector-driven mechanics coordinate with Apache Tomcat’s internal thread architecture and native OS kernel buffers to handle high-concurrency request processing.</p>
                     <div class="card-footer">
-                        <span>5 min read</span>
+                        <span>15 mins read</span>
                     </div>
                 </div>
             </article>
 
-            <!-- Article Card 2 -->
-            <article class="card">
-                <div class="card-img" style="background-color: #cbd5e1;"></div>
-                <div class="card-body">
-                    <span class="card-tag">Productivity</span>
-                    <h3><a href="#">The Art of Creative Monotasking</a></h3>
-                    <p>Why deep work and single-focus sessions yield higher creative output than chaotic multitasking routines.</p>
-                    <div class="card-footer">
-                        <span>4 min read</span>
                     </div>
-                </div>
-            </article>
-
-            <!-- Article Card 3 -->
-            <article class="card">
-                <div class="card-img" style="background-color: #94a3b8;"></div>
-                <div class="card-body">
-                    <span class="card-tag">Culture</span>
-                    <h3><a href="#">Preserving Independent Journalism Online</a></h3>
-                    <p>Exploring the monetization models keeping local news and niche publications alive today.</p>
-                    <div class="card-footer">
-                        <span>8 min read</span>
-                    </div>
-                </div>
-            </article>
-        </div>
     </main>
 
     <!-- Footer / Newsletter -->
     <footer class="footer">
         <div class="footer-content">
-            <h2>Stories that matter. Delivered directly to you.</h2>
-            <p>Join 15,000+ readers who receive our curated weekly digest.</p>
-            <form class="newsletter-form" onsubmit="event.preventDefault();">
-                <input type="email" placeholder="Your email address" required>
-                <button type="submit">Join Newsletter</button>
-            </form>
+            
         </div>
     </footer>
 
