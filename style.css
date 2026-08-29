@@ -280,21 +280,162 @@ a {
     }
 }
 
-table {
-    width: 100% !important;
-    border-collapse: collapse !important;
-    margin: 2rem 0 !important;
-    border: 1px solid #94a3b8 !important; /* Darker grey border line */
-}
-
 th, td {
     padding: 12px 16px !important;
     border: 1px solid #cbd5e1 !important; /* Forces visible grid lines between cells */
     text-align: left !important;
 }
 
+.article-header {
+    background-color: var(--bg-light);
+    padding: 5rem 2rem 3rem 2rem;
+    text-align: center;
+}
+
+.article-header-content {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.article-header h1 {
+    font-family: var(--font-serif);
+    font-size: 2.75rem;
+    line-height: 1.25;
+    margin-top: 1rem;
+    margin-bottom: 1.5rem;
+    color: var(--primary);
+}
+
+.article-container {
+    max-width: 740px; /* Golden reading layout width */
+    margin: 0 auto;
+    padding: 3rem 1.5rem;
+}
+
+.article-section {
+    margin-bottom: 2.5rem;
+}
+
+.article-section h2 {
+    font-family: var(--font-serif);
+    font-size: 2rem;
+    margin: 2rem 0 1rem 0;
+    color: var(--primary);
+}
+
+.article-section h3 {
+    font-family: var(--font-sans);
+    font-size: 1.4rem;
+    font-weight: 600;
+    margin: 1.75rem 0 0.75rem 0;
+    color: var(--primary);
+}
+
+.article-section h4 {
+    font-size: 1.1rem;
+    margin: 1.5rem 0 0.5rem 0;
+    color: var(--primary);
+}
+
+.article-section p {
+    font-size: 1.1rem;
+    color: var(--text-main);
+    line-height: 1.75;
+    margin-bottom: 1.5rem;
+}
+
+/* List Formatting */
+.article-section ol, .article-section ul {
+    margin-left: 1.5rem;
+    margin-bottom: 1.5rem;
+    color: var(--text-main);
+    font-size: 1.05rem;
+}
+
+.article-section li {
+    margin-bottom: 0.5rem;
+    line-height: 1.6;
+}
+
+.agenda-box {
+    background-color: var(--bg-light);
+    padding: 2rem;
+    border-radius: 8px;
+    border-left: 4px solid var(--accent);
+}
+
+.divider {
+    border: none;
+    border-top: 1px solid #e2e8f0;
+    margin: 3rem 0;
+}
+
+/* Code Syntax & Diagrams Blocks Styling */
+.code-box, .diagram-block {
+    background-color: #0f172a;
+    color: #f8fafc;
+    padding: 1.25rem;
+    border-radius: 6px;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.9rem;
+    overflow-x: auto;
+    margin: 1rem 0 1.5rem 0;
+    line-height: 1.5;
+}
+
+.diagram-block {
+    background-color: #1e293b;
+    color: #38bdf8; /* Blue neon theme for layout text diagrams */
+}
+
+/* ==========================================
+   Table Specific Styling System 
+   ========================================== */
+.table-container {
+    margin: 2.5rem 0;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    overflow: hidden;
+}
+
+.table-responsive {
+    width: 100%;
+    overflow-x: auto;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.95rem;
+    text-align: left;
+}
+
 thead th {
-    background-color: #f1f5f9 !important;
-    color: #0f172a !important;
-    font-weight: 600 !important;
+    background-color: #f8fafc;
+    color: #0f172a;
+    font-weight: 600;
+    padding: 1rem 1.25rem;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+tbody td {
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid #e2e8f0;
+    color: #334155;
+    line-height: 1.5;
+}
+
+tbody tr:nth-child(even) {
+    background-color: #f8fafc;
+}
+
+tbody tr:hover {
+    background-color: #f1f5f9;
+}
+
+tbody td:first-child {
+    color: #0f172a;
+    font-weight: 600;
 }
