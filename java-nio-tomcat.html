@@ -53,7 +53,7 @@
                   <li>The Three Pillars of Java NIO</li>
                   <li>The Java NIO Selector Lifecycle &amp; Interest Operations</li>
                   <li>Selection Keys and the Event Loop</li>
-                  <li>Trade-offs &amp; Modern Alternatives</li>
+                  
                 </ul>
               </li>
               <li><strong>Tomcat's Internal Network Architecture</strong>
@@ -106,16 +106,16 @@
             <h3>Traditional Blocking I/O vs. Java NIO</h3>
             <p>Traditional Java I/O (<code>java.io</code>) is stream-oriented and blocking. Data is read or written as a continuous stream, and if a socket has no incoming data, the reading thread blocks — freezing execution until data arrives. This forces architectures into a rigid "one thread per client connection" model. Under heavy load, this model consumes significant memory (each thread reserves its own stack) and induces high Operating System (OS) context-switching overhead as the CPU cycles between thousands of blocked and active threads.</p>
             <p>Java NIO (New I/O), introduced in JDK 1.4, takes a different approach: it's buffer-oriented, and — when channels are explicitly configured for non-blocking mode — reads and writes return immediately instead of waiting. Rather than handing back one byte at a time, NIO works with <strong>Buffers</strong> holding chunks of data. When a non-blocking channel has no data available, a read call doesn't block the thread; it simply returns with nothing, and the thread is free to move on to other work.</p>
-           <p>The real power of this model comes from pairing non-blocking channels with a Selector. A single thread registers many channels with one Selector and asks it which channels are actually ready for I/O, reacting only to those. This is what allows one thread to monitor and manage thousands of active network connections simultaneously, instead of needing one thread per connection.</p>
+           <p>The real power of this model comes from pairing non-blocking channels with a <strong>Selector</strong>. A single thread registers many channels with one Selector and asks it which channels are actually ready for I/O, reacting only to those. This is what allows one thread to monitor and manage thousands of active network connections simultaneously, instead of needing one thread per connection.</p>
              <h3>The Three Pillars of Java NIO</h3>
 <p>NIO's foundational architecture depends on three core components [2]:</p>
 <ol>
-  <li><strong>Channels:</strong> Gateways to physical entities like sockets, files, or hardware devices [2]. Unlike one-way Streams, Channels are bidirectional, meaning they can both read and write [2]. Common socket-based implementations include <code>SocketChannel</code> and <code>ServerSocketChannel</code> [2].</li>
-  <li><strong>Buffers:</strong> Dedicated blocks of memory used to temporarily hold data [2]. In NIO, you never read directly from or write directly to a channel; instead, you read from a channel into a buffer, and write from a buffer into a channel [2]. The most common buffer is <code>ByteBuffer</code> [2].</li>
-  <li><strong>Selectors:</strong> An I/O multiplexer that enables a single thread to monitor multiple selectable channels for active traffic events [2].</li>
+  <li><strong>Channels:</strong> Gateways to physical entities like sockets, files, or hardware devices. Unlike one-way Streams, Channels are bidirectional, meaning they can both read and write. Common socket-based implementations include <code>SocketChannel</code> and <code>ServerSocketChannel</code>.</li>
+  <li><strong>Buffers:</strong> Dedicated blocks of memory used to hold data temporarily. In NIO, you never read directly from or write directly to a channel; instead, you read from a channel into a buffer, and write from a buffer into a channel. The most common buffer is <code>ByteBuffer</code>.</li>
+  <li><strong>Selectors:</strong> An I/O multiplexer that enables a single thread to monitor multiple selectable channels for active traffic events.</li>
 </ol>
 <h3>The Java NIO Selector Lifecycle &amp; Interest Operations</h3>
-<p>The Selector acts like an air traffic controller [3]. Instead of spawning thousands of threads to wait on individual client connections, all connections are registered with a single Selector object, letting a single thread query the Selector for events [3].</p>
+<p>The Selector acts like an air traffic controller. Instead of spawning thousands of threads to wait on individual client connections, all connections are registered with a single Selector object, letting a single thread query the Selector for events.</p>
 <pre class="diagram-block"><code>+-----+------------+                 +-----+------------+
 |  SocketChannel   |                 |  SocketChannel   |
 | (Client Conn 1)  |                 | (Client Conn 2)  |
@@ -126,40 +126,29 @@
                   ┌──────────────────┐
                   │  Java Selector   │◀─── Registered for Events
                   └──────────────────┘</code></pre>
-<p>To use a Selector, an application steps through a sequential registration and polling loop [4]:</p>
+<p>To use a Selector, an application steps through a sequential registration and polling loop:</p>
 <ol>
   <li><strong>Open the Selector:</strong> Instantiated via a static factory method:<pre class="language-java"><code class="language-java">Selector selector = Selector.open();</code></pre>
   </li>
-  <li><strong>Configure Non-Blocking Mode:</strong> A channel must be explicitly switched out of blocking mode before registration. Note that <code>FileChannel</code>s cannot use selectors because they cannot be made non-blocking [4].<pre class="language-java"><code class="language-java">channel.configureBlocking(false);</code></pre>
+  <li><strong>Configure Non-Blocking Mode:</strong> A channel must be explicitly switched out of blocking mode before registration. Note that <code>FileChannel</code>s cannot use selectors because they cannot be made non-blocking.<pre class="language-java"><code class="language-java">channel.configureBlocking(false);</code></pre>
   </li>
-  <li><strong>Register the Channel:</strong> Bind the channel to the selector while identifying its <strong>Interest Set</strong> (the exact events the selector should watch for) [4, 5]:<pre class="language-java"><code class="language-java">SelectionKey key = channel.register(selector, SelectionKey.OP_READ);</code></pre>
+  <li><strong>Register the Channel:</strong> Bind the channel to the selector while identifying its <strong>Interest Set</strong> (the exact events the selector should watch for):<pre class="language-java"><code class="language-java">SelectionKey key = channel.register(selector, SelectionKey.OP_READ);</code></pre>
   </li>
 </ol>
 <h4>The Four Interest Operations:</h4>
 <ul>
-  <li><code>SelectionKey.OP_ACCEPT</code>: The server socket channel has a new client connection attempt ready to be accepted [5].</li>
-  <li><code>SelectionKey.OP_CONNECT</code>: A client socket successfully finalized its connection to a remote server [5].</li>
-  <li><code>SelectionKey.OP_READ</code>: The channel has data waiting in its low-level kernel buffer, ready to be read into application memory [5].</li>
-  <li><code>SelectionKey.OP_WRITE</code>: The channel's internal network buffers have space available to accept outgoing payloads [5].</li>
+  <li><code>SelectionKey.OP_ACCEPT</code>: The server socket channel has a new client connection attempt ready to be accepted.</li>
+  <li><code>SelectionKey.OP_CONNECT</code>: A client socket successfully finalized its connection to a remote server.</li>
+  <li><code>SelectionKey.OP_READ</code>: The channel has data waiting in its low-level kernel buffer, ready to be read into application memory.</li>
+  <li><code>SelectionKey.OP_WRITE</code>: The channel's internal network buffers have space available to accept outgoing payloads.</li>
 </ul>
 <h3>Selection Keys and the Event Loop</h3>
-<p>The <code>register()</code> method yields a <code>SelectionKey</code> token that encapsulates the precise relationship between a specific channel and the selector [6]. The server runs inside an <strong>Event Loop</strong> structured around the <code>select()</code> call:</p>
+<p>The <code>register()</code> method yields a <code>SelectionKey</code> token that encapsulates the precise relationship between a specific channel and the selector. The server runs inside an <strong>Event Loop</strong> structured around the <code>select()</code> call:</p>
 <ol>
-  <li><code>selector.select()</code>: Blocks the thread only until at least one registered event occurs on any monitored channel [6].</li>
-  <li><code>selector.selectedKeys()</code>: Returns a set of <code>SelectionKey</code> objects representing the channels ready for processing [6].</li>
-  <li><strong>Iteration &amp; Reset:</strong> The thread loops through the active keys, determines what action is required (<code>isAcceptable()</code>, <code>isReadable()</code>), handles the corresponding I/O, and removes the processed key from the selected set to prevent it from being processed twice [6].</li>
+  <li><code>selector.select()</code>: Blocks the thread only until at least one registered event occurs on any monitored channel.</li>
+  <li><code>selector.selectedKeys()</code>: Returns a set of <code>SelectionKey</code> objects representing the channels ready for processing.</li>
+  <li><strong>Iteration &amp; Reset:</strong> The thread loops through the active keys, determines what action is required (<code>isAcceptable()</code>, <code>isReadable()</code>), handles the corresponding I/O, and removes the processed key from the selected set to prevent it from being processed twice.</li>
 </ol>
-<h3>Blueprint for a Single-Threaded Server</h3>
-<p>Below is the structural skeleton of a single-threaded server using a Selector [7]:</p>
-<pre class="language-java"><code class="language-java">import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.nio.ByteBuffer;
-import java.nio.channels.*;
-import java.util.Iterator;
-import java.util.Set;
-public class NioEchoServer {
-    // The selector coordinates incoming connections and read events.
-}</code></pre>
 <hr>
 <h2>2. Tomcat's Internal Network Architecture</h2>
 <p>Historically, Apache Tomcat used a BIO (Blocking I/O) connector, which adhered to the "one thread per connection" model [10]. Modern versions of Tomcat use the <strong>NIO Connector</strong> (<code>org.apache.coyote.http11.Http11NioProtocol</code>) as the default engine to manage massive traffic loads efficiently [10].</p>
