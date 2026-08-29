@@ -151,9 +151,17 @@
 </ol>
 <hr>
 <h2>2. Tomcat's Internal Network Architecture</h2>
-<p>Historically, Apache Tomcat used a BIO (Blocking I/O) connector, which adhered to the "one thread per connection" model [10]. Modern versions of Tomcat use the <strong>NIO Connector</strong> (<code>org.apache.coyote.http11.Http11NioProtocol</code>) as the default engine to manage massive traffic loads efficiently [10].</p>
-<p>Tomcat combines a Java NIO Selector network layer with a traditional Thread Pool worker layer, preventing a single thread from handling everything [11]. When an HTTP request hits Tomcat, it flows through a specialized group of internal components known as <strong>Coyote</strong> (Tomcat’s connector framework) [11].</p>
-<pre class="diagram-block"><code>[ Client Sockets ]
+<p>Historically, Apache Tomcat used a BIO (Blocking I/O) connector, which adhered to the "one thread per connection" model — a design that was ultimately removed from Tomcat 10 onward. Modern versions of Tomcat instead default to the NIO Connector (<code>org.apache.coyote.http11.Http11NioProtocol</code>) to handle massive concurrent traffic efficiently.</p>
+             <p>Historically, Apache Tomcat used a BIO (Blocking I/O) connector, which adhered to the "one thread per connection" model [10]. Modern versions of Tomcat use the <strong>NIO Connector</strong> (<code>org.apache.coyote.http11.Http11NioProtocol</code>) as the default engine to manage massive traffic loads efficiently [10].</p>
+<p>Under the hood, Tomcat splits the work across two distinct layers so that no single thread is responsible for everything:</p>
+<ul>
+  <li>A network layer, built on a Java NIO Selector, where a small number of Poller threads watch thousands of registered connections and detect the moment any of them becomes ready for I/O.</li>
+    <li>A worker layer, a traditional bounded Thread Pool, where the actual request processing happens once a connection is flagged as ready.
+    </li>
+</ul>
+    <p>This division of labor is what lets Tomcat scale: the Selector-based network layer is cheap to run even with thousands of open connections, because it isn't tied up doing blocking reads — it just watches for readiness. Only when there's real work to do does a request get handed off to a worker thread from the pool.</p>
+<p>When an HTTP request arrives, it flows through Coyote, Tomcat's internal connector framework, which ties the network layer, the thread pool, and the higher-level Servlet processing together into a single request-handling pipeline.</p>
+             <pre class="diagram-block"><code>[ Client Sockets ]
 ┌────────────────────────────────────────────────────────┐
 │ COYOTE CONNECTOR (Http11NioProtocol)                   │
 │                                                        │
@@ -177,9 +185,9 @@
 └────────────────────────────────────────────────────────┘</code></pre>
 <h3>The Core Triad of Components:</h3>
 <ol>
-  <li><strong>The Acceptor (The Gatekeeper):</strong> A dedicated thread running a standard blocking loop around <code>serverSocketChannel.accept()</code>. Its sole job is to accept new incoming TCP handshakes from clients. Once caught, it configures the client's <code>SocketChannel</code> to non-blocking mode (<code>configureBlocking(false)</code>), wraps it in an internal <code>NioChannel</code> metadata object, and hands it directly to the Poller [14].</li>
-  <li><strong>The Poller (The Air Traffic Controller):</strong> A thread that owns and manages the Java NIO Selector instance. Tomcat usually spawns 1 to 2 Poller threads by default [15]. It registers the newly arrived <code>SocketChannel</code> onto its Selector for <code>OP_READ</code> events and runs the <code>selector.select()</code> event loop. Persistent Keep-Alive connections sit quietly inside this Selector without wasting any worker threads. The moment the client transmits an HTTP payload, the Selector wakes up and marks that channel's SelectionKey as readable (<code>isReadable()</code>) [15].</li>
-  <li><strong>The Worker Pool (The Heavy Lifters):</strong> A dedicated thread pool controlled by Tomcat (prefixed as <code>http-nio-8080-exec-*</code>) [16]. When the Poller thread spots an active <code>OP_READ</code> event, it extracts the <code>SocketChannel</code> and assigns it to an idle Worker Thread from the pool to avoid freezing the Poller's Selector loop [16].</li>
+  <li><strong>The Acceptor (The Gatekeeper):</strong> A dedicated thread running a simple blocking loop around <code>serverSocketChannel.accept()</code>. Its sole job is catching new incoming TCP handshakes from clients. Once a connection lands, the Acceptor switches the client's <code>SocketChannel</code> into non-blocking mode via <code>configureBlocking(false)</code>, wraps it in an internal <code>NioChannel</code> wrapper, and hands it off to the Poller.</li>
+  <li><strong>The Poller (The Air Traffic Controller):</strong> The Poller (The Air Traffic Controller) — A thread that owns and drives a Java NIO <code>Selector</code>code> instance. In modern Tomcat (8.5+), this is a single dedicated Poller thread per NIO endpoint — the older <code>pollerThreadCount</code>code> setting that allowed multiple Pollers has been deprecated and effectively locked to 1. The Poller registers each newly arrived <code>SocketChannel</code>code> on its Selector for <code>OP_READ</code>code> events and runs the <code>selector.select()</code>code> event loop. This is where the efficiency payoff really shows: persistent Keep-Alive connections just sit quietly registered on the Selector, consuming no worker threads at all while idle. The moment a client actually sends an HTTP payload, the Selector wakes up and flags that channel's <code>SelectionKey</code> as readable (<code>isReadable()</code>).</li>
+  <li><strong>The Worker Pool (The Heavy Lifters):</strong> A dedicated thread pool (threads prefixed <code>http-nio-8080-exec-*</code>) that does the actual request processing. When the Poller detects an active <code>OP_READ</code> event, it hands the <code>SocketChannel</code> off to an idle worker thread from this pool — deliberately keeping the handoff fast so the single Poller thread is never stuck doing slow work and can get straight back to its Selector loop.</li>
 </ol>
 <hr>
 <h2>3. The Lifecycle of an HTTP Request in Tomcat</h2>
