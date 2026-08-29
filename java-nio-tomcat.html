@@ -191,30 +191,37 @@
 </ol>
 <hr>
 <h2>3. The Lifecycle of an HTTP Request in Tomcat</h2>
-<p>To understand how Java NIO translates into a web application framework, we can follow a single HTTP request from start to finish [16]:</p>
+<p>To understand how Java NIO translates into a web application framework, we can follow a single HTTP request from start to finish:</p>
 <ol>
-  <li><strong>Connection:</strong> The client clicks a link. The Acceptor thread picks up the TCP handshake and registers the channel to the Poller's Selector [17].</li>
-  <li><strong>Waiting (Keep-Alive):</strong> Before sending data, the connection consumes virtually zero bytes of thread memory because it is stored purely as an entry inside the Poller's Selector registry [17].</li>
-  <li><strong>Data Arrival:</strong> The browser sends the HTTP payload (e.g., <code>GET /api/users</code>). The OS triggers the Selector to wake up the Poller thread [17].</li>
-  <li><strong>Handoff:</strong> The Poller packages the channel and assigns it to an idle Worker Thread from the pool [17].</li>
-  <li><strong>Parsing (Coyote):</strong> The Worker thread allocates a Java NIO <code>ByteBuffer</code>, reads the raw bytes out of the channel, and passes them to the Coyote engine. Coyote parses the raw text into standard <code>HttpServletRequest</code> and <code>HttpServletResponse</code> objects [17].</li>
-  <li><strong>Container Routing (Catalina):</strong> The Worker thread carries these request and response objects down the Catalina container hierarchy [17]:<ul>
-      <li><strong>Engine:</strong> The top-level container [17].</li>
-      <li><strong>Host:</strong> Selects the virtual host (e.g., <code>localhost</code>) [17].</li>
-      <li><strong>Context:</strong> Pinpoints the specific web application deployment (e.g., <code>/my-api</code>) [17].</li>
-      <li><strong>Wrapper:</strong> Locates the specific Servlet instance mapping to the target URL [17].</li>
+  <li><strong>Connection:</strong> The client clicks a link. The Acceptor thread picks up the TCP handshake and registers the channel to the Poller's Selector.</li>
+  <li><strong>Waiting (Keep-Alive):</strong> Before sending data, the connection consumes virtually zero bytes of thread memory because it is stored purely as an entry inside the Poller's Selector registry.</li>
+  <li><strong>Data Arrival:</strong> Data Arrival: The browser sends the HTTP payload (e.g., <code>GET /api/users</code>). Here, the OS genuinely has to notify Tomcat, because the Worker threads have no way of knowing when a client will send data. The kernel places the incoming bytes into the socket's receive buffer and flags the channel as ready; the Selector wakes the Poller thread with that <code>OP_READ</code> event.</li>
+  <li><strong>Handoff:</strong> The Poller packages the channel and assigns it to an idle Worker Thread from the pool.</li>
+  <li><strong>Parsing (Coyote):</strong> The Worker thread allocates a Java NIO <code>ByteBuffer</code>, reads the raw bytes out of the channel, and passes them to the Coyote engine. Coyote parses the raw text into standard <code>HttpServletRequest</code> and <code>HttpServletResponse</code> objects.</li>
+  <li><strong>Container Routing (Catalina):</strong> The Worker thread carries these request and response objects down the Catalina container hierarchy:<ul>
+      <li><strong>Engine:</strong> The top-level container.</li>
+      <li><strong>Host:</strong> Selects the virtual host (e.g., <code>localhost</code>).</li>
+      <li><strong>Context:</strong> Pinpoints the specific web application deployment (e.g., <code>/my-api</code>).</li>
+      <li><strong>Wrapper:</strong> Locates the specific Servlet instance mapping to the target URL.</li>
     </ul>
   </li>
-  <li><strong>Execution:</strong> The Worker thread runs the application code via <code>servlet.service(request, response)</code>. In Spring Boot applications, this is where <code>@RestController</code> code is executed [17].</li>
-  <li><strong>Response &amp; Return:</strong> The application code writes data to the response stream. The Worker thread flushes the bytes back down into the NIO channel, resets the channel configuration, and returns itself to the thread pool. The channel goes back into the Poller's Selector to wait for the next request [17].</li>
+  <li><strong>Execution:</strong> The Worker thread runs the application code via <code>servlet.service(request, response)</code>. In Spring Boot applications, this is where <code>@RestController</code> code is executed.</li>
+  <li><strong>Response &amp; Return:</strong> Unlike reads, writes don't need the OS to signal "go ahead" — the Worker thread already knows it has data to send the moment the servlet finishes, so it writes proactively instead of waiting on the Selector:</li>
+  <ul>
+      <li>The Worker thread calls <code>SocketChannel.write(buffer)</code> directly.</li>
+      <li>The OS kernel copies those bytes out of the JVM's <code>ByteBuffer</code> into the socket's send buffer (kernel space). The <code>write()</code> call returns as soon as that copy completes — it does not wait for the client to actually receive or acknowledge the data. From here, the OS's TCP stack handles transmission, retransmission, and congestion control entirely on its own, outside the JVM's visibility.</li>
+      <li>The normal case: the send buffer has room, the full response is copied in one (or a few) <code>write()</code> calls, and the Worker thread is done — no Selector involvement needed.</li>
+      <li>The backpressure case: if the client is slow or the response is large, the send buffer can fill up mid-write. A non-blocking <code>write()</code> then returns having written only part of the data. Rather than blocking, Tomcat registers that channel's <code>SelectionKey</code> for <code>OP_WRITE</code> interest on the Poller's Selector. Once the client's TCP window opens back up and the send buffer drains, the OS wakes the Selector, and writing resumes from where it left off.</li>
+  </ul>
+   <li>Cleanup and Return: Once the response is fully written, the Worker thread resets the channel's state and returns itself to the thread pool. The channel goes back into the Poller's Selector, registered for <code>OP_READ</code>, to wait — at zero thread cost — for the next request on that connection.</li> 
 </ol>
 <h3>Performance Tuning: maxConnections vs. maxThreads</h3>
-<p>Understanding Tomcat's internals clarifies the difference between two critical configuration parameters [18]:</p>
+<p>Understanding Tomcat's internals clarifies the difference between two critical configuration parameters:</p>
 <ul>
-  <li><strong><code>maxConnections</code> (Default ~8,192+):</strong> The absolute maximum number of concurrent TCP connections Tomcat can keep open at once. Because of the Poller's Selector, thousands of idle browsers can stay connected simultaneously without crashing the server [18].</li>
-  <li><strong><code>maxThreads</code> (Default ~200):</strong> The maximum number of Worker Threads allocated for executing actual backend code simultaneously [18].</li>
+  <li><strong><code>maxConnections</code> (Default ~8,192+):</strong> The absolute maximum number of concurrent TCP connections Tomcat can keep open at once. Because of the Poller's Selector, thousands of idle browsers can stay connected simultaneously without crashing the server.</li>
+  <li><strong><code>maxThreads</code> (Default ~200):</strong> The maximum number of Worker Threads allocated for executing actual backend code simultaneously.</li>
 </ul>
-<p>This separation prevents resource starvation: even if there are 5,000 concurrent connected users, Tomcat only needs enough execution threads (<code>maxThreads</code>) to handle the subset of users actively clicking buttons and sending payloads at that exact millisecond [18].</p>
+<p>This separation prevents resource starvation: even if there are 5,000 concurrent connected users, Tomcat only needs enough execution threads (<code>maxThreads</code>) to handle the subset of users actively clicking buttons and sending payloads at that exact millisecond.</p>
 <hr>
 <h2>4. Under the Hood: Native OS Kernel Integration</h2>
 <p>Neither the Acceptor thread, the Poller thread, nor the application code moves raw data from the network card into the Java channel. The OS Kernel handles this entirely in the background [41].</p>
