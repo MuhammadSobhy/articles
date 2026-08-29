@@ -3,16 +3,100 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My GitHub Pages Site</title>
-    <!-- Connect your CSS file here -->
+    <title>Chronicle - Modern Articles & Insights</title>
+    <!-- Link to Google Fonts for elegant typography -->
+    <link rel="preconnect" href="https://googleapis.com">
+    <link rel="preconnect" href="https://gstatic.com" crossorigin>
+    <link href="https://googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:ital,wght@0,600;1,400&display=swap" rel="stylesheet">
+    <!-- Link to your CSS file -->
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-    <h1>Welcome to My Website</h1>
-    <p>If you see this, your GitHub Page is working!</p>
+    <!-- Navigation Bar -->
+    <nav class="navbar">
+        <div class="logo">Chronicle<span>.</span></div>
+        <ul class="nav-links">
+            <li><a href="#" class="active">Home</a></li>
+            <li><a href="#">Articles</a></li>
+            <li><a href="#">Categories</a></li>
+            <li><a href="#">About</a></li>
+        </ul>
+        <button class="btn-primary">Subscribe</button>
+    </nav>
 
-    <!-- Connect your JavaScript file here -->
-    <script src="script.js"></script>
+    <!-- Hero Section -->
+    <header class="hero">
+        <div class="hero-content">
+            <span class="tag">Featured Article</span>
+            <h1>The Future of Digital Content and Intentional Reading</h1>
+            <p>Discover how modern creators are shifting away from clickbait algorithms to build deep, meaningful communities through long-form written text.</p>
+            <div class="author-meta">
+                <span class="author">By Sarah Jenkins</span>
+                <span class="date">Oct 24, 2026</span>
+            </div>
+            <a href="#" class="read-more-btn">Read Article &rarr;</a>
+        </div>
+    </header>
+
+    <!-- Main Content Section -->
+    <main class="container">
+        <h2 class="section-title">Latest Stories</h2>
+        
+        <!-- Articles Grid -->
+        <div class="articles-grid">
+            <!-- Article Card 1 -->
+            <article class="card">
+                <div class="card-img" style="background-color: #e2e8f0;"></div>
+                <div class="card-body">
+                    <span class="card-tag">Technology</span>
+                    <h3><a href="#">Designing for the Human Experience in AI Systems</a></h3>
+                    <p>How user experience frameworks are adapting to generative interfaces and prompt-based systems.</p>
+                    <div class="card-footer">
+                        <span>5 min read</span>
+                    </div>
+                </div>
+            </article>
+
+            <!-- Article Card 2 -->
+            <article class="card">
+                <div class="card-img" style="background-color: #cbd5e1;"></div>
+                <div class="card-body">
+                    <span class="card-tag">Productivity</span>
+                    <h3><a href="#">The Art of Creative Monotasking</a></h3>
+                    <p>Why deep work and single-focus sessions yield higher creative output than chaotic multitasking routines.</p>
+                    <div class="card-footer">
+                        <span>4 min read</span>
+                    </div>
+                </div>
+            </article>
+
+            <!-- Article Card 3 -->
+            <article class="card">
+                <div class="card-img" style="background-color: #94a3b8;"></div>
+                <div class="card-body">
+                    <span class="card-tag">Culture</span>
+                    <h3><a href="#">Preserving Independent Journalism Online</a></h3>
+                    <p>Exploring the monetization models keeping local news and niche publications alive today.</p>
+                    <div class="card-footer">
+                        <span>8 min read</span>
+                    </div>
+                </div>
+            </article>
+        </div>
+    </main>
+
+    <!-- Footer / Newsletter -->
+    <footer class="footer">
+        <div class="footer-content">
+            <h2>Stories that matter. Delivered directly to you.</h2>
+            <p>Join 15,000+ readers who receive our curated weekly digest.</p>
+            <form class="newsletter-form" onsubmit="event.preventDefault();">
+                <input type="email" placeholder="Your email address" required>
+                <button type="submit">Join Newsletter</button>
+            </form>
+        </div>
+    </footer>
+
 </body>
 </html>
