@@ -161,7 +161,7 @@ public class NioEchoServer {
 <h2>2. Tomcat's Internal Network Architecture</h2>
 <p>Historically, Apache Tomcat used a BIO (Blocking I/O) connector, which adhered to the "one thread per connection" model [10]. Modern versions of Tomcat use the <strong>NIO Connector</strong> (<code>org.apache.coyote.http11.Http11NioProtocol</code>) as the default engine to manage massive traffic loads efficiently [10].</p>
 <p>Tomcat combines a Java NIO Selector network layer with a traditional Thread Pool worker layer, preventing a single thread from handling everything [11]. When an HTTP request hits Tomcat, it flows through a specialized group of internal components known as <strong>Coyote</strong> (Tomcat’s connector framework) [11].</p>
-<pre><code>[ Client Sockets ]
+<pre class="diagram-block"><code>[ Client Sockets ]
 ┌────────────────────────────────────────────────────────┐
 │ COYOTE CONNECTOR (Http11NioProtocol)                   │
 │                                                        │
@@ -274,7 +274,7 @@ while (true) {
 </ol>
 <h3>Scenario B: HTTP/2 (The Multiplexed Model)</h3>
 <p>If HTTP/2 is enabled (<code>org.apache.coyote.http2.Http2Protocol</code>), HTTP/2 <strong>Streams</strong> allow a single TCP connection (<code>SocketChannel</code>) to carry hundreds of interleaved data frames simultaneously [56].</p>
-<pre><code>[SocketChannel] ──┼─── Stream 1 (Bytes) ──► [Worker Thread A processes Request 1]
+<pre class="diagram-block"><code>[SocketChannel] ──┼─── Stream 1 (Bytes) ──► [Worker Thread A processes Request 1]
 (Single TCP)     │
                  └─── Stream 3 (Bytes) ──► [Worker Thread B processes Request 2]</code></pre>
 <ol>
@@ -405,4 +405,12 @@ return new Dashboard(user, order);</code></pre>
     </tr>
   </tbody>
 </table>
-         </section></body>
+         </section>
+<!-- Footer / Newsletter -->
+    <footer class="footer">
+        <div class="footer-content">
+            
+        </div>
+    </footer>
+</body>
+</html>
