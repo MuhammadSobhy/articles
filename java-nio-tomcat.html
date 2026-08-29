@@ -137,26 +137,25 @@
 </ol>
 <h4>The Four Interest Operations:</h4>
 <ul>
-  <li><code>SelectionKey.OP_ACCEPT</code>: The server socket channel has a new client connection attempt ready to be accepted.</li>
-  <li><code>SelectionKey.OP_CONNECT</code>: A client socket successfully finalized its connection to a remote server.</li>
-  <li><code>SelectionKey.OP_READ</code>: The channel has data waiting in its low-level kernel buffer, ready to be read into application memory.</li>
-  <li><code>SelectionKey.OP_WRITE</code>: The channel's internal network buffers have space available to accept outgoing payloads.</li>
+  <li><strong><code>SelectionKey.OP_ACCEPT</code></strong>: The server socket channel has a new client connection attempt ready to be accepted.</li>
+  <li><strong><code>SelectionKey.OP_CONNECT</code></strong>: A client socket successfully finalized its connection to a remote server.</li>
+  <li><strong><code>SelectionKey.OP_READ</code></strong>: The channel has data waiting in its low-level kernel buffer, ready to be read into application memory.</li>
+  <li><strong><code>SelectionKey.OP_WRITE</code></strong>: The channel's internal network buffers have space available to accept outgoing payloads.</li>
 </ul>
 <h3>Selection Keys and the Event Loop</h3>
 <p>The <code>register()</code> method yields a <code>SelectionKey</code> token that encapsulates the precise relationship between a specific channel and the selector. The server runs inside an <strong>Event Loop</strong> structured around the <code>select()</code> call:</p>
 <ol>
-  <li><code>selector.select()</code>: Blocks the thread only until at least one registered event occurs on any monitored channel.</li>
-  <li><code>selector.selectedKeys()</code>: Returns a set of <code>SelectionKey</code> objects representing the channels ready for processing.</li>
+  <li><strong><code>selector.select()</code></strong>: Blocks the thread only until at least one registered event occurs on any monitored channel.</li>
+  <li><strong><code>selector.selectedKeys()</code></strong>: Returns a set of <code>SelectionKey</code> objects representing the channels ready for processing.</li>
   <li><strong>Iteration &amp; Reset:</strong> The thread loops through the active keys, determines what action is required (<code>isAcceptable()</code>, <code>isReadable()</code>), handles the corresponding I/O, and removes the processed key from the selected set to prevent it from being processed twice.</li>
 </ol>
 <hr>
 <h2>2. Tomcat's Internal Network Architecture</h2>
 <p>Historically, Apache Tomcat used a BIO (Blocking I/O) connector, which adhered to the "one thread per connection" model — a design that was ultimately removed from Tomcat 10 onward. Modern versions of Tomcat instead default to the NIO Connector (<code>org.apache.coyote.http11.Http11NioProtocol</code>) to handle massive concurrent traffic efficiently.</p>
-             <p>Historically, Apache Tomcat used a BIO (Blocking I/O) connector, which adhered to the "one thread per connection" model [10]. Modern versions of Tomcat use the <strong>NIO Connector</strong> (<code>org.apache.coyote.http11.Http11NioProtocol</code>) as the default engine to manage massive traffic loads efficiently [10].</p>
 <p>Under the hood, Tomcat splits the work across two distinct layers so that no single thread is responsible for everything:</p>
 <ul>
-  <li>A network layer, built on a Java NIO Selector, where a small number of Poller threads watch thousands of registered connections and detect the moment any of them becomes ready for I/O.</li>
-    <li>A worker layer, a traditional bounded Thread Pool, where the actual request processing happens once a connection is flagged as ready.
+  <li><strong>A network layer</strong>, built on a Java NIO Selector, where a small number of Poller threads watch thousands of registered connections and detect the moment any of them becomes ready for I/O.</li>
+    <li><strong>A worker layer</strong>, a traditional bounded Thread Pool, where the actual request processing happens once a connection is flagged as ready.
     </li>
 </ul>
     <p>This division of labor is what lets Tomcat scale: the Selector-based network layer is cheap to run even with thousands of open connections, because it isn't tied up doing blocking reads — it just watches for readiness. Only when there's real work to do does a request get handed off to a worker thread from the pool.</p>
@@ -186,7 +185,7 @@
 <h3>The Core Triad of Components:</h3>
 <ol>
   <li><strong>The Acceptor (The Gatekeeper):</strong> A dedicated thread running a simple blocking loop around <code>serverSocketChannel.accept()</code>. Its sole job is catching new incoming TCP handshakes from clients. Once a connection lands, the Acceptor switches the client's <code>SocketChannel</code> into non-blocking mode via <code>configureBlocking(false)</code>, wraps it in an internal <code>NioChannel</code> wrapper, and hands it off to the Poller.</li>
-  <li><strong>The Poller (The Air Traffic Controller):</strong> The Poller (The Air Traffic Controller) — A thread that owns and drives a Java NIO <code>Selector</code>code> instance. In modern Tomcat (8.5+), this is a single dedicated Poller thread per NIO endpoint — the older <code>pollerThreadCount</code>code> setting that allowed multiple Pollers has been deprecated and effectively locked to 1. The Poller registers each newly arrived <code>SocketChannel</code>code> on its Selector for <code>OP_READ</code>code> events and runs the <code>selector.select()</code>code> event loop. This is where the efficiency payoff really shows: persistent Keep-Alive connections just sit quietly registered on the Selector, consuming no worker threads at all while idle. The moment a client actually sends an HTTP payload, the Selector wakes up and flags that channel's <code>SelectionKey</code> as readable (<code>isReadable()</code>).</li>
+  <li><strong>The Poller (The Air Traffic Controller):</strong> The Poller (The Air Traffic Controller) — A thread that owns and drives a Java NIO <code>Selector</code> instance. In modern Tomcat (8.5+), this is a single dedicated Poller thread per NIO endpoint — the older <code>pollerThreadCount</code> setting that allowed multiple Pollers has been deprecated and effectively locked to 1. The Poller registers each newly arrived <code>SocketChannel</code> on its Selector for <code>OP_READ</code> events and runs the <code>selector.select()</code> event loop. This is where the efficiency payoff really shows: persistent Keep-Alive connections just sit quietly registered on the Selector, consuming no worker threads at all while idle. The moment a client actually sends an HTTP payload, the Selector wakes up and flags that channel's <code>SelectionKey</code> as readable (<code>isReadable()</code>).</li>
   <li><strong>The Worker Pool (The Heavy Lifters):</strong> A dedicated thread pool (threads prefixed <code>http-nio-8080-exec-*</code>) that does the actual request processing. When the Poller detects an active <code>OP_READ</code> event, it hands the <code>SocketChannel</code> off to an idle worker thread from this pool — deliberately keeping the handoff fast so the single Poller thread is never stuck doing slow work and can get straight back to its Selector loop.</li>
 </ol>
 <hr>
@@ -213,7 +212,7 @@
       <li>The normal case: the send buffer has room, the full response is copied in one (or a few) <code>write()</code> calls, and the Worker thread is done — no Selector involvement needed.</li>
       <li>The backpressure case: if the client is slow or the response is large, the send buffer can fill up mid-write. A non-blocking <code>write()</code> then returns having written only part of the data. Rather than blocking, Tomcat registers that channel's <code>SelectionKey</code> for <code>OP_WRITE</code> interest on the Poller's Selector. Once the client's TCP window opens back up and the send buffer drains, the OS wakes the Selector, and writing resumes from where it left off.</li>
   </ul>
-   <li>Cleanup and Return: Once the response is fully written, the Worker thread resets the channel's state and returns itself to the thread pool. The channel goes back into the Poller's Selector, registered for <code>OP_READ</code>, to wait — at zero thread cost — for the next request on that connection.</li> 
+   <li><strong>Cleanup and Return</strong>: Once the response is fully written, the Worker thread resets the channel's state and returns itself to the thread pool. The channel goes back into the Poller's Selector, registered for <code>OP_READ</code>, to wait — at zero thread cost — for the next request on that connection.</li> 
 </ol>
 <h3>Performance Tuning: maxConnections vs. maxThreads</h3>
 <p>Understanding Tomcat's internals clarifies the difference between two critical configuration parameters:</p>
@@ -224,29 +223,29 @@
 <p>This separation prevents resource starvation: even if there are 5,000 concurrent connected users, Tomcat only needs enough execution threads (<code>maxThreads</code>) to handle the subset of users actively clicking buttons and sending payloads at that exact millisecond.</p>
 <hr>
 <h2>4. Under the Hood: Native OS Kernel Integration</h2>
-<p>Neither the Acceptor thread, the Poller thread, nor the application code moves raw data from the network card into the Java channel. The OS Kernel handles this entirely in the background [41].</p>
+<p>Neither the Acceptor thread, the Poller thread, nor the application code moves raw data from the network card into the Java channel. The OS Kernel handles this entirely in the background.</p>
 <h3>Symmetrical Sockets: Inbound (RMEM) &amp; Outbound (WMEM) Buffers</h3>
-<p>At the OS level, every TCP socket contains two completely separate, independent, one-way memory highways [59, 60]:</p>
+<p>At the OS level, every TCP socket contains two completely separate, independent, one-way memory buffers:</p>
 <ul>
-  <li><strong>Socket Receive Buffer (RMEM):</strong> Inbound traffic only (Client → Server) [60].</li>
-  <li><strong>Socket Send Buffer (WMEM):</strong> Outbound traffic only (Server → Client) [60].</li>
+  <li><strong>Socket Receive Buffer (RMEM):</strong> Inbound traffic only (Client → Server).</li>
+  <li><strong>Socket Send Buffer (WMEM):</strong> Outbound traffic only (Server → Client).</li>
 </ul>
-<p>These two buffers operate independently. Inbound data flows do not block, overwrite, or collide with outbound data writes [60].</p>
+<p>These two buffers operate independently — inbound data flows never block, overwrite, or collide with outbound writes.</p>
 <h3>The Silent Actor: Background OS Ingestion</h3>
 <ol>
-  <li><strong>The Client Sends Data:</strong> The client transmits TCP packets across the network [44].</li>
-  <li><strong>The Hardware Handles Arrival:</strong> The server's physical Network Interface Card (NIC) receives the signal [44].</li>
-  <li><strong>The OS Kernel Takes Over:</strong> The NIC fires a hardware interrupt to the CPU. The OS Kernel intercepts these packets, verifies the TCP sequence, strips network headers, and copies the raw bytes into the socket's <strong>Socket Receive Buffer (RMEM)</strong> [44].</li>
-  <li><strong>The Channel "Fills":</strong> In Java NIO, a <code>SocketChannel</code> is not a physical bucket of data but a programmatic pointer (file descriptor) to this OS kernel buffer. As the OS kernel fills the RMEM, the <code>SocketChannel</code> is effectively "filled" and marked ready for reading [44].</li>
+  <li><strong>The Client Sends Data:</strong> The client transmits TCP packets across the network.</li>
+  <li><strong>The Hardware Handles Arrival:</strong> The server's physical Network Interface Card (NIC) receives the signal.</li>
+  <li><strong>The OS Kernel Takes Over:</strong> The NIC fires a hardware interrupt to the CPU. The OS Kernel intercepts these packets, verifies the TCP sequence, strips network headers, and copies the raw bytes into the socket's <strong>Socket Receive Buffer (RMEM)</strong>.</li>
+  <li><strong>The Channel "Fills":</strong> In Java NIO, a <code>SocketChannel</code> is not a physical bucket of data but a programmatic pointer (file descriptor) to this OS kernel buffer. As the OS kernel fills the RMEM, the <code>SocketChannel</code> is effectively "filled" and marked ready for reading.</li>
 </ol>
-<p>During this background process, Java is completely uninvolved. The Acceptor thread is busy waiting for new clients, and the Poller thread is asleep [44].</p>
+<p>During this entire background process, Java is completely uninvolved. The Acceptor thread is busy waiting for new clients, and the Poller thread is asleep, blocked inside its own system call.</p>
 <h3>How the Poller Wakes Up</h3>
-<p>Once the OS Kernel successfully writes data into the RMEM, it updates the state of that connection's file descriptor in the OS native multiplexer (such as <strong><code>epoll</code></strong> on Linux, <strong><code>kqueue</code></strong> on macOS, or <strong><code>IOCP</code></strong> on Windows) [45].</p>
+<p>Once the OS Kernel successfully writes data into the RMEM, it updates the state of that connection's file descriptor in the OS native multiplexer (such as <strong><code>epoll</code></strong> on Linux, <strong><code>kqueue</code></strong> on macOS, or a <code>select()</code>-based mechanism on Windows (Java's standard <code>Selector</code> API doesn't use Windows' IOCP; IOCP is a separate, completion-based model only exposed through Java's NIO.2 <code>AsynchronousChannel</code> API, not by Tomcat's connector).</p>
 <ul>
-  <li>The OS flags the socket descriptor as "Ready for Reading" [45].</li>
-  <li>The Tomcat Poller thread, sitting blocked inside <code>selector.select()</code>, is shaken awake by the OS Kernel [45].</li>
-  <li>The Poller thread detects the <code>OP_READ</code> interest flag, extracts the <code>SocketChannel</code>, and hands it to a Worker Thread [45].</li>
-  <li>The Worker thread executes <code>channel.read(byteBuffer)</code>. This triggers a native system call (<code>sys_read</code>), streaming the bytes out of the kernel's RMEM directly into Java's application buffer (typically optimized via <strong>Zero-Copy mechanics</strong> using <strong>Direct ByteBuffers</strong>) [45, 46].</li>
+  <li>The OS flags the socket descriptor as "Ready for Reading".</li>
+  <li>The Tomcat Poller thread, sitting blocked inside <code>selector.select()</code>, is shaken awake by the OS Kernel.</li>
+  <li>The Poller thread detects the <code>OP_READ</code> interest flag, extracts the <code>SocketChannel</code>, and hands it to a Worker Thread.</li>
+  <li>The Worker thread executes <code>channel.read(byteBuffer)</code>. This triggers a native system call (<code>sys_read</code>), streaming the bytes out of the kernel's RMEM directly into Java's application buffer. Using a Direct ByteBuffer here avoids an extra copy — the JVM heap is skipped, so data goes straight from kernel memory into off-heap native memory the JVM can access — though this is a reduced-copy optimization, not true zero-copy.</li>
 </ul>
 <hr>
 <h2>5. Decoupling Acceptor and Poller: The Poller Event Queue</h2>
