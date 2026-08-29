@@ -1,9 +1,9 @@
 # Deep Dive: Java NIO and Apache Tomcat Internal Request Architecture
 
 ## Introduction
-In high-performance Java enterprise applications, I/O efficiency is the defining bottleneck for scalability [1]. Traditionally, Java's networking relied on synchronous, blocking APIs that forced a "one thread per client connection" model [1]. This approach quickly ran into structural limitations under massive traffic loads [1]. 
+In high-performance Java enterprise applications, I/O efficiency is the defining bottleneck for scalability. Traditionally, Java's networking relied on synchronous, blocking APIs that forced a "one thread per client connection" model. This approach quickly ran into structural limitations under massive traffic loads. 
 
-This comprehensive technical guide explores how **Java NIO (New I/O)** solves these bottlenecks using non-blocking, multiplexed mechanics [1], and how **Apache Tomcat** utilizes this foundation internally to manage thousands of concurrent connections [10]. Finally, we will examine how modern developments like **Spring WebFlux (Reactive Stack)** and **JDK 21+ Virtual Threads (Project Loom)** evolve these scaling paradigms [25, 31, 32].
+This comprehensive technical guide explores how **Java NIO (New I/O)** solves these bottlenecks using non-blocking, multiplexed mechanics, and how **Apache Tomcat** utilizes this foundation internally to manage thousands of concurrent connections. Finally, we will examine how modern developments like **Spring WebFlux (Reactive Stack)** and **JDK 21+ Virtual Threads (Project Loom)** evolve these scaling paradigms.
 
 ---
 
@@ -43,9 +43,9 @@ This comprehensive technical guide explores how **Java NIO (New I/O)** solves th
 ## 1. Foundations of Java Non-Blocking I/O (NIO)
 
 ### Traditional Blocking I/O vs. Java NIO
-Traditional Java I/O (`java.io`) is **stream-oriented and blocking** [1]. It reads or writes data one byte or character at a time [1]. If a socket has no incoming data, the reading thread blocks, freezing its execution until data arrives [1]. This forces architectures into a rigid **"one thread per client connection"** model [1]. Under heavy load, this model consumes significant system memory and induces high Operating System (OS) context-switching overhead as the CPU jumps between thousands of blocked and active threads [1].
+Traditional Java I/O (`java.io`) is **stream-oriented and blocking**. It reads or writes data one byte or character at a time. If a socket has no incoming data, the reading thread blocks, freezing its execution until data arrives. This forces architectures into a rigid **"one thread per client connection"** model. Under heavy load, this model consumes significant system memory and induces high Operating System (OS) context-switching overhead as the CPU jumps between thousands of blocked and active threads.
 
-**Java NIO (New I/O)**, introduced in JDK 1.4, is **buffer-oriented and non-blocking** [1]. Instead of single bytes, NIO tracks blocks of data [1]. When an execution thread requests data from a source, it receives whatever is currently available right away without waiting [1]. If no data is present, the thread is not blocked; it is immediately released to perform other tasks [1]. This allows a single thread to manage thousands of active network connections simultaneously [1].
+**Java NIO (New I/O)**, introduced in JDK 1.4, is **buffer-oriented and non-blocking**. Instead of single bytes, NIO tracks blocks of data. When an execution thread requests data from a source, it receives whatever is currently available right away without waiting. If no data is present, the thread is not blocked; it is immediately released to perform other tasks. This allows a single thread to manage thousands of active network connections simultaneously.
 
 ### The Three Pillars of Java NIO
 NIO's foundational architecture depends on three core components [2]:
