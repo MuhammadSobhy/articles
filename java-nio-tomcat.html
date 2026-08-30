@@ -329,7 +329,7 @@
 <p>Even though Tomcat uses Java NIO to fetch bytes off the wire in a non-blocking manner, the moment it hands the request to a Worker Thread, it switches to a traditional synchronous execution model.</p>
 <p>If servlet code performs a slow blocking operation (e.g., a database query or external API call), that specific Worker Thread is completely frozen for the duration:</p>
 <pre class="diagram-block">
-    <code>[Tomcat Worker Thread] ──► [Sends DB Query] ──► [BLOCKED / IDLE FOR 500ms] ──► [Processes Response]</code></pre>
+<code>[Tomcat Worker Thread] ──► [Sends DB Query] ──► [BLOCKED / IDLE FOR 500ms] ──► [Processes Response]</code></pre>
 <p>If <code>maxThreads</code> is 200, and 200 users trigger a slow query simultaneously, Tomcat runs out of worker threads, forcing subsequent users to wait in a queue even if the server's CPU usage is under 5%. The traditional fix is to raise the thread count, but that costs memory: each platform thread reserves roughly 1MB for its stack.</p>
 <h3>Netty and Spring WebFlux (Reactive Multiplexing)</h3>
 <p>Spring WebFlux completely departs from Tomcat's architecture, defaulting to <strong>Netty</strong> (or Eclipse Jetty). Instead of hundreds of worker threads, Netty runs on a small, fixed pool of event loop threads — by default, <code>availableProcessors() × 2</code>, not simply "one per core".</p>
@@ -339,32 +339,45 @@
                                                         │
 [Event Loop Thread] ◀─── [DB Event Fires] ◀─────────────┘</code></pre>
 <ol>
-  <li><strong>Reactive Triggers:</strong> Code triggers database queries or API calls using a reactive driver (e.g., R2DBC or WebClient) [28].</li>
-  <li><strong>Immediate Release:</strong> Instead of waiting, the Event Loop thread registers a callback and immediately moves on to handle requests for other users [28].</li>
-  <li><strong>Callback Execution:</strong> When the database returns data, it triggers an event. An Event Loop thread captures this event, executes the callback, and returns the response [28].<br><em>Result:</em> A WebFlux application with only a few threads can process tens of thousands of concurrent active requests that would otherwise crash a standard Tomcat server [29].</li>
+  <li><strong>Reactive Triggers:</strong> Code triggers database queries or API calls using a reactive driver (e.g., R2DBC or WebClient for HTTP).</li>
+  <li><strong>Immediate Release:</strong> Instead of waiting, the Event Loop thread registers a callback and immediately moves on to handle requests for other users.</li>
+  <li><strong>Callback Execution:</strong> When the database returns data, an event fires; an Event Loop thread captures this event, executes the callback, and returns the response.</li>
 </ol>
+<br>
+<em>Result:</em> A WebFlux application with only a few threads can process tens of thousands of concurrent active requests that would exhaust a standard Tomcat thread pool.</li>
+
 <h3>JDK 21+ Virtual Threads (Project Loom)</h3>
-<p>Introduced in Java 21, <strong>Virtual Threads</strong> decouple Java threads from OS threads, switching from a 1:1 mapping to an <strong>M:N mapping</strong> where millions of lightweight virtual threads run on top of a few physical OS "Carrier Threads" [32, 34].</p>
-<pre><code>[Virtual Thread 1] (User A - Waiting on DB) ──┐
+<p>Introduced in Java 21, <strong>Virtual Threads</strong> decouple Java threads from OS threads, switching from a 1:1 mapping to an <strong>M:N mapping</strong> where millions of lightweight virtual threads run on top of a few physical OS "Carrier Threads".</p>
+<pre class ="diagram-block">
+<code>
+[Virtual Thread 1] (User A - Waiting on DB)  ──┐
 [Virtual Thread 2] (User B - Processing)     ──┼──► [Carrier Thread 1] (OS Thread)
-[Virtual Thread 3] (User C - Waiting on API) ──┘</code></pre>
+[Virtual Thread 3] (User C - Waiting on API) ──┘
+</code></pre>
+<br>
 <p>When a Virtual Thread hits a blocking operation:</p>
 <ol>
-  <li><strong>JVM Interception:</strong> The JVM automatically intercepts the blocking call [35].</li>
-  <li><strong>Unmounting:</strong> The JVM detaches ("unmounts") the Virtual Thread from the physical OS Carrier Thread. The Virtual Thread's state is moved to the JVM's heap memory (consuming only a few hundred bytes instead of 1MB) [35].</li>
-  <li><strong>Carrier Thread Free:</strong> The OS Carrier Thread is instantly free to run other Virtual Threads [35].</li>
-  <li><strong>Mounting:</strong> When the database responds, the JVM schedules the Virtual Thread to mount onto any available Carrier Thread to finish execution [35].</li>
+  <li><strong>JVM Interception:</strong> The JVM automatically intercepts the blocking call.</li>
+  <li><strong>Unmounting:</strong> The JVM detaches ("unmounts") the Virtual Thread from the physical OS Carrier Thread. The Virtual Thread's state is moved to the JVM's heap memory (consuming only a few hundred bytes instead of 1MB).</li>
+  <li><strong>Carrier Thread Free:</strong> The OS Carrier Thread is instantly free to run other Virtual Threads.</li>
+  <li><strong>Mounting:</strong> Once the blocking operation completes, the JVM schedules the Virtual Thread to mount onto any available Carrier Thread to finish execution.</li>
 </ol>
 <h4>What This Means for Tomcat:</h4>
 <ul>
-  <li><strong>"Infinite Threads":</strong> When Virtual Threads are enabled in Tomcat, every incoming HTTP request is assigned its own dedicated Virtual Thread [36]. Tomcat can spawn 10,000 Virtual Threads for 10,000 slow database calls without crashing, using only a handful of physical OS threads [36].</li>
-  <li><strong>Clean Imperative Code:</strong> You can write standard, readable sequential code instead of complex reactive streams (Mono/Flux):<pre class="language-java"><code class="language-java">// Looks blocking, but is 100% non-blocking to the OS under Java 21!
+  <li><strong>Infinite Threads:</strong> When Virtual Threads are enabled in Tomcat, every incoming HTTP request is assigned its own dedicated Virtual Thread. Tomcat can spawn thousands of Virtual Threads for thousands of concurrently slow database calls without exhausting real OS threads.</li>
+  <li><strong>Clean Imperative Code:</strong> You can write standard, readable sequential code instead of complex reactive streams (Mono/Flux):
+
+<pre class="language-java">
+<code class="language-java">
+    
+// Looks blocking, but the underlying OS thread is never actually held hostage
 User user = database.fetchUser(id);
 Order order = api.getOrder(id);
-return new Dashboard(user, order);</code></pre>
-  </li>
+return new Dashboard(user, order);
+</code></pre>
+</li>
 </ul>
-<h3>The Synchronization Gotcha: Thread Pinning</h3>
+<h3>The Synchronization Gotcha — Mostly Resolved as of JDK 24</h3>
 <p>While Virtual Threads are highly effective, they suffer from <strong>Thread Pinning</strong> [38, 39].<br>If a Virtual Thread encounters a blocking operation while inside a <strong><code>synchronized</code> block or method</strong>, it cannot unmount from the Carrier Thread [39]. It pins the Carrier Thread, blocking physical OS resources just like traditional platform threads [39].</p>
 <ul>
   <li><em>Mitigation:</em> Modern frameworks and libraries have updated their internal code to replace <code>synchronized</code> locks with <code>java.util.concurrent.locks.ReentrantLock</code> [39]. However, old, unmaintained third-party libraries can still cause thread pinning under load [39].</li>
