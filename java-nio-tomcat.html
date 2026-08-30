@@ -259,21 +259,21 @@
   <li><strong>The Acceptor Catches a Connection:</strong> A new client connects. The Acceptor thread wakes up from <code>server.accept()</code> and wraps the connection in a Tomcat metadata object (a <code>PollerEvent</code>, built around a <code>NioSocketWrapper</code>).</li>
   <li><strong>The Acceptor Bypasses the Selector:</strong> Rather than interacting directly with the Selector (which isn't safe to mutate concurrently while another thread is blocked inside <code>select()</code>), the Acceptor quietly pushes the connection object onto the Poller's Event Queue via <code>addEvent()</code>. At this point, the Selector does not yet know the connection exists.</li>
   <li><strong>The Alarm Clock (<code>selector.wakeup()</code>):</strong> Immediately after queuing the event, <code>addEvent()</code> calls:
-      <pre class="language-java"><code class="language-java">
-          if (wakeupCounter.incrementAndGet() == 0) {
-              selector.wakeup();
-          }
-    </code></pre>
+  <pre class="language-java"><code class="language-java">
+  if (wakeupCounter.incrementAndGet() == 0) {
+      selector.wakeup();
+  }
+  </code></pre>
       <code>wakeup()</code> is a highly optimized, thread-safe method. Under the hood, the OS-level Selector implementation keeps a small internal loopback pipe registered as one of its watched descriptors; calling <code>wakeup()</code> writes a byte to that pipe, which immediately looks like "ready" traffic to the blocked <code>select()</code> call. Tomcat's <code>wakeupCounter</code> check is a small optimization on top of this — it avoids issuing a redundant <code>wakeup()</code> call if the Poller is already awake and mid-cycle processing events.</li>
   <li><strong>The Poller Drains the Queue:</strong> The byte written to the loopback pipe instantly unblocks the Poller thread, causing <code>selector.select()</code> to exit. Before the Poller loops back to check client network traffic, it runs a maintenance step to empty its Event Queue:
-      <pre class="language-java"><code class="language-java">
-    // Simplified view of Tomcat's Poller queue maintenance
-    while (true) {
-        PollerEvent pe = events.poll();
-        if (pe == null) break;
-        // Registers the SocketChannel on the Selector for OP_READ
-    }
-      </code></pre>
+  <pre class="language-java"><code class="language-java">
+  // Simplified view of Tomcat's Poller queue maintenance
+  while (true) {
+      PollerEvent pe = events.poll();
+      if (pe == null) break;
+      // Registers the SocketChannel on the Selector for OP_READ
+  }
+  </code></pre>
       The Poller registers the new <code>SocketChannel</code> onto the Selector for <code>OP_READ</code> interest, then invokes <code>selector.select()</code> again, now monitoring both its existing clients and the newly added one.</li>
 </ol>
 <hr>
@@ -281,7 +281,6 @@
 <p>Whether a single TCP connection (<code>SocketChannel</code>) can process multiple requests concurrently depends entirely on the protocol version running over it.</p>
 <h3>Scenario A: HTTP/1.1 (The Sequential Model)</h3>
 <p>HTTP/1.1 connections support Keep-Alive, allowing a single TCP connection to stay open and be reused across multiple requests. The protocol permits pipelining — sending a second request before the first response arrives — but in practice this is almost never what happens on the wire.</p>
-
 <strong>The normal case: browsers don't pipeline</strong>
 <p>Every major browser (Chrome, Firefox, Safari) has pipelining disabled by default, and has for years — it caused problems with buggy intermediary proxies, and it suffers from the exact Head-of-Line (HoL) blocking problem described below (one slow response stalls every request queued behind it on that connection). Firefox went as far as removing its pipelining implementation entirely.</p>
 <p>Instead, browsers get concurrency a different way: they open multiple parallel TCP connections per host (historically up to ~6) and spread requests across them. So on any single connection, the real-world pattern is strictly: send Request 1 → wait for the complete Response 1 → only then send Request 2.</p>             
@@ -294,8 +293,8 @@
 <strong>The edge case: pipelining clients</strong>
 <p>Some non-browser clients do pipeline — certain HTTP client libraries, load-testing tools, server-to-server clients, or reverse proxies that pipeline requests upstream regardless of what the original client did. For these, Request 2's bytes really can arrive on the wire before Response 1 has been sent.</p>            
 <pre class="diagram-block"><code>
-    [Client] ───(Request 1)───► [SocketChannel] ──► [Worker Thread A processes...]
-    [Client] ───(Request 2)───► [BLOCKED IN OS BUFFER]
+[Client] ───(Request 1)───► [SocketChannel] ──► [Worker Thread A processes...]
+[Client] ───(Request 2)───► [BLOCKED IN OS BUFFER]
 </code></pre>
 <ol>
   <li><strong>Request 1 Arrives:</strong> The Poller detects it and hands the <code>SocketChannel</code> off to Worker Thread A.</li>
@@ -311,7 +310,8 @@
 
 <h3>Scenario B: HTTP/2 (The Multiplexed Model)</h3>
 <p>With HTTP/2 enabled (<code>org.apache.coyote.http2.Http2Protocol</code>), HTTP/2 <strong>Streams</strong> allow a single TCP connection (<code>SocketChannel</code>) to carry many interleaved frames from different logical requests simultaneously.</p>
-<pre class="diagram-block"><code>[SocketChannel] ──┼─── Stream 1 (Bytes) ──► [Worker Thread A processes Request 1]
+<pre class="diagram-block"><code>
+[SocketChannel] ──┼─── Stream 1 (Bytes) ──► [Worker Thread A processes Request 1]
 (Single TCP)     │
                  └─── Stream 3 (Bytes) ──► [Worker Thread B processes Request 2]</code></pre>
 <ol>
