@@ -250,19 +250,29 @@
 <hr>
 <h2>5. Decoupling Acceptor and Poller: The Poller Event Queue</h2>
 <p>How can the Poller thread accept new incoming channels from the Acceptor if it is currently blocked inside a <code>selector.select()</code> system call? </p>
-<p>To solve this classic concurrency problem, Tomcat decouples the hand-off using a thread-safe internal queue combined with an explicit interrupt mechanism (<code>selector.wakeup()</code>) [47].</p>
+<p>To solve this classic concurrency problem, Tomcat decouples the hand-off using a thread-safe internal queue combined with an explicit interrupt mechanism (<code>selector.wakeup()</code>).</p>
 <h3>The Poller Event Queue</h3>
-<p>The Poller thread owns a concurrent, thread-safe queue of pending tasks called the <strong>Poller Event Queue</strong> (implemented as <code>SynchronizedQueue</code> or <code>ConcurrentLinkedQueue</code>) [48].</p>
+<p>The Poller thread owns a dedicated, thread-safe queue of pending tasks called the <strong>Poller Event Queue</strong>, implemented as <code>SynchronizedQueue<PollerEvent></code>.</p>
 <h3>The Step-by-Step Hand-off Flow</h3>
 <ol>
-  <li><strong>The Poller is Asleep:</strong> The Poller loop calls <code>selector.select()</code>, delegating down to the native OS kernel (<code>epoll_wait</code> on Linux) and putting the Poller thread into a blocked sleep state [49].</li>
-  <li><strong>The Acceptor Catches a Connection:</strong> A new client connects. The Acceptor thread wakes up from <code>server.accept()</code> and wraps the connection in a Tomcat metadata object (<code>PollerEvent</code> or <code>NioSocketWrapper</code>) [50].</li>
-  <li><strong>The Acceptor Bypasses the Selector:</strong> Rather than interacting directly with the Selector (which would block or throw exceptions), the Acceptor quietly pushes the connection object onto the Poller's Event Queue. At this point, the Selector does not yet know the connection exists [50].</li>
-  <li><strong>The Alarm Clock (<code>selector.wakeup()</code>):</strong> The Acceptor thread immediately executes:<pre class="language-java"><code class="language-java">poller.getSelector().wakeup();</code></pre><code>wakeup()</code> is a highly optimized, thread-safe method. Under the hood, the OS kernel opens a tiny internal loopback pipe or socket. Executing <code>wakeup()</code> writes a single byte to this loopback pipe [51].</li>
-  <li><strong>The Poller Drains the Queue:</strong> The byte written to the loopback pipe instantly unblocks the Poller thread, causing <code>selector.select()</code> to exit [51]. Before the Poller loops back to check client network traffic, it runs a maintenance step to empty its Event Queue [52]:<pre class="language-java"><code class="language-java">// Simplified view of Tomcat's Poller queue maintenance
-while (true) {
-    // Pulls SocketChannel from queue, registers it for OP_READ, and clears event
-}</code></pre>The Poller registers the new <code>SocketChannel</code> onto the Selector for <code>OP_READ</code> traffic, then invokes <code>selector.select()</code> again, now monitoring both existing clients and the new client [52].</li>
+  <li><strong>The Poller is Asleep:</strong> The Poller loop calls <code>selector.select()</code>, delegating down to the native OS kernel (<code>epoll_wait</code> on Linux) and putting the Poller thread into a blocked sleep state.</li>
+  <li><strong>The Acceptor Catches a Connection:</strong> A new client connects. The Acceptor thread wakes up from <code>server.accept()</code> and wraps the connection in a Tomcat metadata object (a <code>PollerEvent</code>, built around a <code>NioSocketWrapper</code>).</li>
+  <li><strong>The Acceptor Bypasses the Selector:</strong> Rather than interacting directly with the Selector (which isn't safe to mutate concurrently while another thread is blocked inside <code>select()</code>), the Acceptor quietly pushes the connection object onto the Poller's Event Queue via <code>addEvent()</code>. At this point, the Selector does not yet know the connection exists.</li>
+  <li><strong>The Alarm Clock (<code>selector.wakeup()</code>):</strong> Immediately after queuing the event, <code>addEvent()</code> calls:
+      <pre class="language-java"><code class="language-java">
+          if (wakeupCounter.incrementAndGet() == 0) {
+    selector.wakeup();
+}
+    </code></pre>
+      <code>wakeup()</code> is a highly optimized, thread-safe method. Under the hood, the OS-level Selector implementation keeps a small internal loopback pipe registered as one of its watched descriptors; calling <code>wakeup()</code> writes a byte to that pipe, which immediately looks like "ready" traffic to the blocked <code>select()</code> call. Tomcat's <code>wakeupCounter</code> check is a small optimization on top of this — it avoids issuing a redundant <code>wakeup()</code> call if the Poller is already awake and mid-cycle processing events.</li>
+  <li><strong>The Poller Drains the Queue:</strong> The byte written to the loopback pipe instantly unblocks the Poller thread, causing <code>selector.select()</code> to exit. Before the Poller loops back to check client network traffic, it runs a maintenance step to empty its Event Queue:
+      <pre class="language-java"><code class="language-java">// Simplified view of Tomcat's Poller queue maintenance
+    while (true) {
+    PollerEvent pe = events.poll();
+    if (pe == null) break;
+    // Registers the SocketChannel on the Selector for OP_READ
+}</code></pre>
+      The Poller registers the new <code>SocketChannel</code> onto the Selector for <code>OP_READ</code> interest, then invokes <code>selector.select()</code> again, now monitoring both its existing clients and the newly added one.</li>
 </ol>
 <hr>
 <h2>6. Concurrency Over a Single TCP Connection</h2>
