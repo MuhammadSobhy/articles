@@ -280,8 +280,19 @@
 <h2>6. Concurrency Over a Single TCP Connection</h2>
 <p>Whether a single TCP connection (<code>SocketChannel</code>) can process multiple requests concurrently depends entirely on the protocol version running over it.</p>
 <h3>Scenario A: HTTP/1.1 (The Sequential Model)</h3>
-<p>HTTP/1.1 connections support Keep-Alive, so the TCP connection stays open across multiple requests — but the protocol itself enforces strict Head-of-Line (HoL) blocking, requiring requests and responses to be processed strictly in order.</p>
+<p>HTTP/1.1 connections support Keep-Alive, allowing a single TCP connection to stay open and be reused across multiple requests. The protocol permits pipelining — sending a second request before the first response arrives — but in practice this is almost never what happens on the wire.</p>
 
+<strong>The normal case: browsers don't pipeline</strong>
+<p>Every major browser (Chrome, Firefox, Safari) has pipelining disabled by default, and has for years — it caused problems with buggy intermediary proxies, and it suffers from the exact Head-of-Line (HoL) blocking problem described below (one slow response stalls every request queued behind it on that connection). Firefox went as far as removing its pipelining implementation entirely.</p>
+<p>Instead, browsers get concurrency a different way: they open multiple parallel TCP connections per host (historically up to ~6) and spread requests across them. So on any single connection, the real-world pattern is strictly: send Request 1 → wait for the complete Response 1 → only then send Request 2.</p>             
+<pre class="diagram-block"><code>
+[Client] ───(Request 1)───► [SocketChannel] ──► [Worker Thread A processes...]
+                                                          ▼
+[Client] ◄──────────(Response 1 fully sent)───────────────┘
+[Client] ───(Request 2, only sent now)───► [SocketChannel] ──► [Worker Thread B processes...]    
+</code></pre>
+<strong>The edge case: pipelining clients</strong>
+<p>Some non-browser clients do pipeline — certain HTTP client libraries, load-testing tools, server-to-server clients, or reverse proxies that pipeline requests upstream regardless of what the original client did. For these, Request 2's bytes really can arrive on the wire before Response 1 has been sent.</p>            
 <pre class="diagram-block"><code>
     [Client] ───(Request 1)───► [SocketChannel] ──► [Worker Thread A processes...]
     [Client] ───(Request 2)───► [BLOCKED IN OS BUFFER]
@@ -289,12 +300,14 @@
 <ol>
   <li><strong>Request 1 Arrives:</strong> The Poller detects it and hands the <code>SocketChannel</code> off to Worker Thread A.</li>
   <li><strong>OP_READ Disabled:</strong> While Worker Thread A is processing the request, Tomcat temporarily <strong>removes the <code>OP_READ</code> interest flag</strong> for this specific channel from the Poller's Selector. This isn't just an optimization — it also prevents a race condition where the Poller could try to hand the same channel to a second worker thread while the first is still using it.</li>
-  <li><strong>Request 2 Queued:</strong> If the client streams Request 2 on the same connection, the raw bytes arrive and sit in the OS RMEM. The Poller ignores them because the Selector is not currently listening to this channel.</li>
+  <li><strong>(Edge case only) Early Bytes Queue Up:</strong> If — atypically — a pipelining client sends Request 2 before Response 1 is done, those bytes simply land in the OS's RMEM and sit there. The Poller ignores them, since it isn't currently watching that channel for readability. For a normal browser, this step doesn't happen at all — Request 2 hasn't been sent yet.</li>
   <li><strong>Response Sent &amp; OP_READ Restored:</strong> Worker Thread A writes Response 1. Once completed, Tomcat tells the Poller to re-add the <code>OP_READ</code> flag to this channel.</li>
-  <li><strong>Request 2 Processed:</strong> The Poller instantly wakes up (due to the bytes waiting in the RMEM) and hands the channel off — potentially to a different worker thread, Worker Thread B.</li>
+  <li><strong>Request 2 Processed:</strong> The Poller wakes — either because a browser only now sends Request 2, or instantly because a pipelining client's bytes were already waiting in RMEM — and hands the channel off, potentially to a different worker thread, Worker Thread B.</li>
 </ol>
+<strong>Why Tomcat disables OP_READ regardless</strong>
+<p>This is the important nuance: the OP_READ toggle isn't primarily a defense against pipelining — it's a general architectural safety mechanism Tomcat uses on every keep-alive connection, pipelining client or not. Its real purpose is to guarantee a <code>SocketChannel</code> is never handed to two worker threads at the same time, avoiding a race condition over who owns the channel while it's mid-processing. The fact that it also correctly handles a pipelining client's early bytes is a convenient side effect of that safety mechanism, not the reason it exists.</p>             
 <br>
-<em>Result:</em> Two worker threads will never process requests from the same <code>SocketChannel</code> concurrently under HTTP/1.1; execution is strictly serial, even though different connections are handled fully in parallel across the worker pool.
+<em>Result:</em> regardless of whether the client pipelines or not, two worker threads never process requests from the same <code>SocketChannel</code> at the same instant under HTTP/1.1 — execution on any given connection is strictly serial. Real concurrency for a browser comes from its multiple parallel connections, not from overlapping requests on one connection.
 
 <h3>Scenario B: HTTP/2 (The Multiplexed Model)</h3>
 <p>With HTTP/2 enabled (<code>org.apache.coyote.http2.Http2Protocol</code>), HTTP/2 <strong>Streams</strong> allow a single TCP connection (<code>SocketChannel</code>) to carry many interleaved frames from different logical requests simultaneously.</p>
