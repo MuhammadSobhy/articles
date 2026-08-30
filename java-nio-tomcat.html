@@ -261,47 +261,55 @@
   <li><strong>The Alarm Clock (<code>selector.wakeup()</code>):</strong> Immediately after queuing the event, <code>addEvent()</code> calls:
       <pre class="language-java"><code class="language-java">
           if (wakeupCounter.incrementAndGet() == 0) {
-    selector.wakeup();
-}
+              selector.wakeup();
+          }
     </code></pre>
       <code>wakeup()</code> is a highly optimized, thread-safe method. Under the hood, the OS-level Selector implementation keeps a small internal loopback pipe registered as one of its watched descriptors; calling <code>wakeup()</code> writes a byte to that pipe, which immediately looks like "ready" traffic to the blocked <code>select()</code> call. Tomcat's <code>wakeupCounter</code> check is a small optimization on top of this — it avoids issuing a redundant <code>wakeup()</code> call if the Poller is already awake and mid-cycle processing events.</li>
   <li><strong>The Poller Drains the Queue:</strong> The byte written to the loopback pipe instantly unblocks the Poller thread, causing <code>selector.select()</code> to exit. Before the Poller loops back to check client network traffic, it runs a maintenance step to empty its Event Queue:
-      <pre class="language-java"><code class="language-java">// Simplified view of Tomcat's Poller queue maintenance
+      <pre class="language-java"><code class="language-java">
+    // Simplified view of Tomcat's Poller queue maintenance
     while (true) {
-    PollerEvent pe = events.poll();
-    if (pe == null) break;
-    // Registers the SocketChannel on the Selector for OP_READ
-}</code></pre>
+        PollerEvent pe = events.poll();
+        if (pe == null) break;
+        // Registers the SocketChannel on the Selector for OP_READ
+    }
+      </code></pre>
       The Poller registers the new <code>SocketChannel</code> onto the Selector for <code>OP_READ</code> interest, then invokes <code>selector.select()</code> again, now monitoring both its existing clients and the newly added one.</li>
 </ol>
 <hr>
 <h2>6. Concurrency Over a Single TCP Connection</h2>
-<p>Whether a single TCP connection (<code>SocketChannel</code>) can process multiple concurrent requests simultaneously depends on the protocol version [53].</p>
+<p>Whether a single TCP connection (<code>SocketChannel</code>) can process multiple requests concurrently depends entirely on the protocol version running over it.</p>
 <h3>Scenario A: HTTP/1.1 (The Sequential Model)</h3>
-<p>HTTP/1.1 connections support Keep-Alive, allowing the TCP connection to stay open. However, it enforces strict <strong>Head-of-Line (HoL) Blocking</strong> at the protocol level, requiring sequential requests and responses [55].</p>
-<pre><code>[Client] ───(Request 1)───► [SocketChannel] ──► [Worker Thread A processes...]
-[Client] ───(Request 2)───► [BLOCKED IN OS BUFFER]     ▼</code></pre>
+<p>HTTP/1.1 connections support Keep-Alive, so the TCP connection stays open across multiple requests — but the protocol itself enforces strict Head-of-Line (HoL) blocking, requiring requests and responses to be processed strictly in order.</p>
+
+<pre class="diagram-block"><code>
+    [Client] ───(Request 1)───► [SocketChannel] ──► [Worker Thread A processes...]
+    [Client] ───(Request 2)───► [BLOCKED IN OS BUFFER]
+</code></pre>
 <ol>
-  <li><strong>Request 1 Processed:</strong> The Poller detects Request 1 and assigns the <code>SocketChannel</code> to Worker Thread A [55].</li>
-  <li><strong>OP_READ Disabled:</strong> While Worker Thread A processes the request, Tomcat temporarily <strong>removes the <code>OP_READ</code> interest flag</strong> for this specific channel from the Poller's Selector [55].</li>
-  <li><strong>Request 2 Queued:</strong> If the client browser streams Request 2 on the same connection, the raw bytes arrive and sit in the OS RMEM. The Poller ignores them because the Selector is not currently listening to this channel [55].</li>
-  <li><strong>Response Sent &amp; OP_READ Restored:</strong> Worker Thread A writes Response 1. Once completed, Tomcat tells the Poller to re-add the <code>OP_READ</code> flag to this channel [55].</li>
-  <li><strong>Request 2 Processed:</strong> The Poller instantly wakes up (due to the bytes waiting in the RMEM) and hands the channel to Worker Thread B [55].<br><em>Result:</em> Two worker threads will never process requests from the same <code>SocketChannel</code> concurrently under HTTP/1.1; execution is strictly serial [55].</li>
+  <li><strong>Request 1 Arrives:</strong> The Poller detects it and hands the <code>SocketChannel</code> off to Worker Thread A.</li>
+  <li><strong>OP_READ Disabled:</strong> While Worker Thread A is processing the request, Tomcat temporarily <strong>removes the <code>OP_READ</code> interest flag</strong> for this specific channel from the Poller's Selector. This isn't just an optimization — it also prevents a race condition where the Poller could try to hand the same channel to a second worker thread while the first is still using it.</li>
+  <li><strong>Request 2 Queued:</strong> If the client streams Request 2 on the same connection, the raw bytes arrive and sit in the OS RMEM. The Poller ignores them because the Selector is not currently listening to this channel.</li>
+  <li><strong>Response Sent &amp; OP_READ Restored:</strong> Worker Thread A writes Response 1. Once completed, Tomcat tells the Poller to re-add the <code>OP_READ</code> flag to this channel.</li>
+  <li><strong>Request 2 Processed:</strong> The Poller instantly wakes up (due to the bytes waiting in the RMEM) and hands the channel off — potentially to a different worker thread, Worker Thread B.</li>
 </ol>
+<br>
+<em>Result:</em> Two worker threads will never process requests from the same <code>SocketChannel</code> concurrently under HTTP/1.1; execution is strictly serial, even though different connections are handled fully in parallel across the worker pool.
+
 <h3>Scenario B: HTTP/2 (The Multiplexed Model)</h3>
-<p>If HTTP/2 is enabled (<code>org.apache.coyote.http2.Http2Protocol</code>), HTTP/2 <strong>Streams</strong> allow a single TCP connection (<code>SocketChannel</code>) to carry hundreds of interleaved data frames simultaneously [56].</p>
+<p>With HTTP/2 enabled (<code>org.apache.coyote.http2.Http2Protocol</code>), HTTP/2 <strong>Streams</strong> allow a single TCP connection (<code>SocketChannel</code>) to carry many interleaved frames from different logical requests simultaneously.</p>
 <pre class="diagram-block"><code>[SocketChannel] ──┼─── Stream 1 (Bytes) ──► [Worker Thread A processes Request 1]
 (Single TCP)     │
                  └─── Stream 3 (Bytes) ──► [Worker Thread B processes Request 2]</code></pre>
 <ol>
-  <li><strong>Interleaved Arrival:</strong> Client sends Request 1 and Request 2 chopped into frames over the same wire simultaneously [56].</li>
-  <li><strong>Poller Reads Frames:</strong> The Poller wakes up, reads raw multiplexed frames, and hands them to Tomcat's HTTP/2 Stream Handler Engine [56].</li>
-  <li><strong>De-multiplexing:</strong> Tomcat parses the stream IDs embedded in the frames, recognizing that Stream 1 is Request 1 and Stream 3 is Request 2 [56].</li>
-  <li><strong>Concurrent Allocation:</strong> Tomcat splits these streams into separate logical sub-requests and schedules them into the worker pool. Worker Thread A processes Request 1, while Worker Thread B concurrently processes Request 2 [56].</li>
-  <li><strong>Merged Response:</strong> As the threads finish, responses are chopped into frames, merged back into the single <code>SocketChannel</code>, and sent back to the client [56].</li>
+  <li><strong>Interleaved Arrival:</strong> Client sends Request 1 and Request 2 chopped into frames over the same wire simultaneously.</li>
+  <li><strong>Poller Reads Frames:</strong> The Poller wakes up, reads raw multiplexed frames, and hands them to Tomcat's HTTP/2 Stream Handler Engine.</li>
+  <li><strong>De-multiplexing:</strong> Tomcat parses the stream IDs embedded in each frame, recognizing (for example) that Stream 1 belongs to Request 1 and Stream 3 belongs to Request 2.</li>
+  <li><strong>Concurrent Allocation:</strong> Tomcat splits these streams into separate logical sub-requests and schedules them into the worker pool. Worker Thread A processes Request 1, while Worker Thread B concurrently processes Request 2.</li>
+  <li><strong>Merged Response:</strong> As the threads finish, responses are chopped into frames and multiplexed back onto the single shared <code>SocketChannel</code>, and sent back to the client.</li>
 </ol>
 <h3>Socket Locking Guardrail</h3>
-<p>To prevent data corruption from threads writing concurrently to the same connection, Tomcat uses internal <strong>write locks</strong> (<code>ReentrantLock</code> or <code>synchronized</code> monitors) on the <code>NioChannel</code> object [57]. While execution runs completely concurrently, the final physical writing phase is tightly synchronized so that thread outputs do not corrupt each other [57].</p>
+<p>Because multiple worker threads can now be writing frames for the same connection concurrently under HTTP/2, Tomcat has to prevent those writes from interleaving and corrupting each other on the wire. It does this with an internal write lock around the shared connection/channel object, so that even though request processing runs fully in parallel, the final physical write to the socket is serialized.</p>
 <hr>
 <h2>7. Scaling the Execution Layer: MVC, WebFlux, and Virtual Threads</h2>
 <h3>The Limitation of Tomcat's Blocking Servlets</h3>
