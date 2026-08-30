@@ -326,13 +326,16 @@
 <hr>
 <h2>7. Scaling the Execution Layer: MVC, WebFlux, and Virtual Threads</h2>
 <h3>The Limitation of Tomcat's Blocking Servlets</h3>
-<p>Even though Tomcat uses Java NIO to fetch bytes off the wire in a non-blocking manner, the moment it hands the request to a Worker Thread, it switches to a traditional synchronous model [21, 22].</p>
-<p>If servlet code performs a slow blocking operation (e.g., a database query or external API call), that specific Worker Thread is completely frozen [22, 26]:</p>
-<pre><code>[Tomcat Worker Thread] ──► [Sends DB Query] ──► [BLOCKED / IDLE FOR 500ms] ──► [Processes Response]</code></pre>
-<p>If <code>maxThreads</code> is 200, and 200 users trigger a slow query simultaneously, Tomcat runs out of worker threads, forcing subsequent users to wait in a queue even if the server's CPU usage is under 5% [22, 27]. To scale Spring MVC, you must increase thread count, wasting memory (each platform thread allocates ~1MB for its stack frame) [27].</p>
+<p>Even though Tomcat uses Java NIO to fetch bytes off the wire in a non-blocking manner, the moment it hands the request to a Worker Thread, it switches to a traditional synchronous execution model.</p>
+<p>If servlet code performs a slow blocking operation (e.g., a database query or external API call), that specific Worker Thread is completely frozen for the duration:</p>
+<pre class="diagram-block">
+    <code>[Tomcat Worker Thread] ──► [Sends DB Query] ──► [BLOCKED / IDLE FOR 500ms] ──► [Processes Response]</code></pre>
+<p>If <code>maxThreads</code> is 200, and 200 users trigger a slow query simultaneously, Tomcat runs out of worker threads, forcing subsequent users to wait in a queue even if the server's CPU usage is under 5%. The traditional fix is to raise the thread count, but that costs memory: each platform thread reserves roughly 1MB for its stack.</p>
 <h3>Netty and Spring WebFlux (Reactive Multiplexing)</h3>
-<p>Spring WebFlux completely departs from Tomcat's architecture, defaulting to <strong>Netty</strong> (or Eclipse Jetty) [27]. Instead of hundreds of worker threads, Netty uses a tiny, fixed number of event loop threads (matching CPU cores) [28].</p>
-<pre><code>[Event Loop Thread] ──► [Triggers DB Query] ──► [Registers Callback &amp; Moves On]
+<p>Spring WebFlux completely departs from Tomcat's architecture, defaulting to <strong>Netty</strong> (or Eclipse Jetty). Instead of hundreds of worker threads, Netty runs on a small, fixed pool of event loop threads — by default, <code>availableProcessors() × 2</code>, not simply "one per core".</p>
+<pre class="diagram-block">
+    <code>
+[Event Loop Thread] ──► [Triggers DB Query] ──► [Registers Callback &amp; Moves On]
                                                         │
 [Event Loop Thread] ◀─── [DB Event Fires] ◀─────────────┘</code></pre>
 <ol>
