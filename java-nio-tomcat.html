@@ -346,24 +346,24 @@
 <em>Result:</em> A WebFlux application with only a few threads can process tens of thousands of concurrent active requests that would exhaust a standard Tomcat thread pool.</li>
 
 <h3>JDK 21+ Virtual Threads (Project Loom)</h3>
-<p>Introduced in Java 21, <strong>Virtual Threads</strong> decouple Java threads from OS threads, switching from a 1:1 mapping to an <strong>M:N mapping</strong> where millions of lightweight virtual threads run on top of a few physical OS "Carrier Threads".</p>
+<p>Introduced in Java 21, Virtual Threads decouple the unit of concurrency from OS threads, switching from a 1:1 mapping to an <strong>M:N mapping</strong>. A large number of lightweight Virtual Threads run on top of a small pool of Carrier Threads — ordinary Java platform threads, each still backed 1:1 by a real OS thread underneath. The JVM's own scheduler is what handles moving Virtual Threads on and off these carriers; the OS itself just sees a small, steadily-busy pool of regular threads.</p>
 <pre class ="diagram-block">
 <code>
 [Virtual Thread 1] (User A - Waiting on DB)  ──┐
-[Virtual Thread 2] (User B - Processing)     ──┼──► [Carrier Thread 1] (OS Thread)
+[Virtual Thread 2] (User B - Processing)     ──┼──► [Carrier Thread 1] (Java platform Thread ──► OS Thread)
 [Virtual Thread 3] (User C - Waiting on API) ──┘
 </code></pre>
 <br>
 <p>When a Virtual Thread hits a blocking operation:</p>
 <ol>
   <li><strong>JVM Interception:</strong> The JVM automatically intercepts the blocking call.</li>
-  <li><strong>Unmounting:</strong> The JVM detaches ("unmounts") the Virtual Thread from the physical OS Carrier Thread. The Virtual Thread's state is moved to the JVM's heap memory (consuming only a few hundred bytes instead of 1MB).</li>
-  <li><strong>Carrier Thread Free:</strong> The OS Carrier Thread is instantly free to run other Virtual Threads.</li>
-  <li><strong>Mounting:</strong> Once the blocking operation completes, the JVM schedules the Virtual Thread to mount onto any available Carrier Thread to finish execution.</li>
+  <li><strong>Unmounting:</strong> The JVM's scheduler detaches ("unmounts") the Virtual Thread from the Carrier Thread. The Virtual Thread's state is moved to the JVM's heap memory (consuming only a few hundred bytes instead of 1MB).</li>
+  <li><strong>Carrier Thread Free:</strong> The Carrier Thread — the platform thread, not the OS thread directly — is instantly free to mount and run other Virtual Threads.</li>
+  <li><strong>Mounting:</strong> Once the blocking operation completes, the JVM's scheduler assigns the Virtual Thread onto any available Carrier Thread to resume execution.</li>
 </ol>
 <h4>What This Means for Tomcat:</h4>
 <ul>
-  <li><strong>Infinite Threads:</strong> When Virtual Threads are enabled in Tomcat, every incoming HTTP request is assigned its own dedicated Virtual Thread. Tomcat can spawn thousands of Virtual Threads for thousands of concurrently slow database calls without exhausting real OS threads.</li>
+  <li><strong>Infinite Threads:</strong> When Virtual Threads are enabled in Tomcat, every incoming HTTP request is assigned its own dedicated Virtual Thread. Tomcat can spawn thousands of Virtual Threads for thousands of concurrently slow database calls, all sharing a small, fixed pool of Carrier Threads, without exhausting real OS threads.</li>
   <li><strong>Clean Imperative Code:</strong> You can write standard, readable sequential code instead of complex reactive streams (Mono/Flux):
 
 <pre class="language-java">
@@ -377,7 +377,7 @@ return new Dashboard(user, order);
 </li>
 </ul>
 <h3>The Synchronization Gotcha — Mostly Resolved as of JDK 24</h3>
-<p>Virtual Threads originally shipped (JDK 21) with a real limitation called Thread Pinning: if a Virtual Thread hit a blocking operation while inside a synchronized block or method, it couldn't unmount — it stayed pinned to its Carrier Thread, tying up a real OS thread just like a traditional platform thread would.</p>
+<p>Virtual Threads originally shipped (JDK 21) with a real limitation called Thread Pinning: if a Virtual Thread hit a blocking operation while inside a synchronized block or method, it couldn't unmount — it stayed pinned to its Carrier Thread, tying that platform thread (and the OS thread behind it) up just as a traditional blocking call would.</p>
 <p>This was a significant practical problem in JDK 21–23, especially since many common libraries (older JDBC drivers, logging adapters, HTTP clients) used synchronized internally, and the standard advice at the time was to wait for those libraries to migrate to <code>java.util.concurrent.locks.ReentrantLock</code>.</p>
 <p>JEP 491, delivered in JDK 24, fixes this directly at the JVM level — monitor ownership is now tracked per virtual thread rather than per carrier, so a Virtual Thread can unmount cleanly even while holding a synchronized lock. On JDK 24 and later, synchronized-induced pinning is essentially a non-issue for the vast majority of applications. The narrower cases that can still pin a thread today involve native/JNI code and certain legacy class-initialization paths — worth monitoring via the jdk.VirtualThreadPinned JFR event, but no longer the widespread concern it was in JDK 21–23.</p>
 <hr>
