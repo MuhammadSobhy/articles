@@ -58,8 +58,7 @@
               </li>
               <li><strong>Tomcat's Internal Network Architecture</strong>
                 <ul>
-                  <li>The Coyote Connector Layer</li>
-                  <li>The Core Triad: Acceptor, Poller, and Worker Pool</li>
+                  <li>>The Core Triad of Components</li>
                 </ul>
               </li>
               <li><strong>The Lifecycle of an HTTP Request in Tomcat</strong>
@@ -378,10 +377,9 @@ return new Dashboard(user, order);
 </li>
 </ul>
 <h3>The Synchronization Gotcha — Mostly Resolved as of JDK 24</h3>
-<p>While Virtual Threads are highly effective, they suffer from <strong>Thread Pinning</strong> [38, 39].<br>If a Virtual Thread encounters a blocking operation while inside a <strong><code>synchronized</code> block or method</strong>, it cannot unmount from the Carrier Thread [39]. It pins the Carrier Thread, blocking physical OS resources just like traditional platform threads [39].</p>
-<ul>
-  <li><em>Mitigation:</em> Modern frameworks and libraries have updated their internal code to replace <code>synchronized</code> locks with <code>java.util.concurrent.locks.ReentrantLock</code> [39]. However, old, unmaintained third-party libraries can still cause thread pinning under load [39].</li>
-</ul>
+<p>Virtual Threads originally shipped (JDK 21) with a real limitation called Thread Pinning: if a Virtual Thread hit a blocking operation while inside a synchronized block or method, it couldn't unmount — it stayed pinned to its Carrier Thread, tying up a real OS thread just like a traditional platform thread would.</p>
+<p>This was a significant practical problem in JDK 21–23, especially since many common libraries (older JDBC drivers, logging adapters, HTTP clients) used synchronized internally, and the standard advice at the time was to wait for those libraries to migrate to <code>java.util.concurrent.locks.ReentrantLock</code>.</p>
+<p>JEP 491, delivered in JDK 24, fixes this directly at the JVM level — monitor ownership is now tracked per virtual thread rather than per carrier, so a Virtual Thread can unmount cleanly even while holding a synchronized lock. On JDK 24 and later, synchronized-induced pinning is essentially a non-issue for the vast majority of applications. The narrower cases that can still pin a thread today involve native/JNI code and certain legacy class-initialization paths — worth monitoring via the jdk.VirtualThreadPinned JFR event, but no longer the widespread concern it was in JDK 21–23.</p>
 <hr>
 <h2>8. Summary Matrix &amp; Architectural Comparison</h2>
 <h3>Tomcat (Spring MVC) vs. Netty (Spring WebFlux)</h3>
